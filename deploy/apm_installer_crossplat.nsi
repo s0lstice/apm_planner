@@ -57,6 +57,12 @@ Section "JIT Debugger" JIT_DEBUGGER
   File "../mgwhelp.dll"
   ExecWait "$INSTDIR\drmingw.exe -i -a"
 SectionEnd 
+Section "MSVC Runtime"
+  SetOutPath $INSTDIR
+  File vcredist_x86.exe
+  DetailPrint "Installing MSVC2008 runtime"
+  ExecWait "$INSTDIR/vcredist_x86.exe /q /norestart"
+SectionEnd
 
 Section "OpenSSL" OPENSSL
   NSISdl::download http://firmware.diydrones.com/Tools/APMPlanner/supportinstalls/Win32OpenSSL_Light-1_0_0l.exe Win32OpenSSL_Light-1_0_0l.exe
