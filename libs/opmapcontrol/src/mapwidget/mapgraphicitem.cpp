@@ -29,6 +29,7 @@
 #include "homeitem.h"
 #include "mapgraphicitem.h"
 #include "waypointlineitem.h"
+#include <QGraphicsSceneMouseEvent>
 
 namespace mapcontrol
 {
@@ -346,11 +347,12 @@ namespace mapcontrol
 
             core->MouseWheelZooming = true;
 
-            if(event->delta() > 0)
+            static const int MapGraphicItemZoomDelta = 8; // This may need to be different for win/linux/mac
+            if(event->delta() > MapGraphicItemZoomDelta)
             {
                 SetZoom(ZoomTotal()+1);
             }
-            else if(event->delta() < 0)
+            else if(event->delta() < -MapGraphicItemZoomDelta)
             {
                 SetZoom(ZoomTotal()-1);
             }
@@ -551,7 +553,17 @@ namespace mapcontrol
     void MapGraphicItem::SetZoomStep(int const& value)
     {
         if(value-core->Zoom()>0 && value<= MaxZoom())
-            ConstructLastImage(value-core->Zoom());
+        {
+            if (value-core->Zoom() > 2)
+            {
+                //ConstructLastImage(2);
+                lastimage = QImage();
+            }
+            else
+            {
+                ConstructLastImage(value-core->Zoom());
+            }
+        }
         else if(value!=MaxZoom())
             lastimage=QImage();
         if(value > MaxZoom())

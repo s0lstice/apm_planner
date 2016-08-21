@@ -1,4 +1,4 @@
-#include "QsLog.h"
+#include "logging.h"
 #include "WaypointViewOnlyView.h"
 #include "ui_WaypointViewOnlyView.h"
 
@@ -210,6 +210,42 @@ void WaypointViewOnlyView::updateValues()
         } //end Frame switch
         break;
     }
+    case MAV_CMD_NAV_SPLINE_WAYPOINT:
+    {
+        switch (wp->getFrame())
+        {
+        case MAV_FRAME_GLOBAL_RELATIVE_ALT:
+        case MAV_FRAME_GLOBAL:
+        {
+            if (wp->getId() == 0) // Home Waypoint
+            {
+            }
+            else if (wp->getParam1()>0)
+            {
+                m_ui->displayBar->setText(QString("Spline waypoint <b>(</b>lat <b>%1<sup>o</sup></b>, lon <b>%2<sup>o</sup></b>, alt <b>%3</b> meters and wait there for %4 sec.").arg(wp->getX(),0, 'f', 7).arg(wp->getY(),0, 'f', 7).arg(wp->getZ(),0, 'f', 2).arg(wp->getParam1()));
+            }
+            else
+            {
+                m_ui->displayBar->setText(QString("Spline waypoint <b>(</b>lat <b>%1<sup>o</sup></b>,lon <b>%2<sup>o</sup></b>,alt <b>%3</b> meters").arg(wp->getX(),0, 'f', 7).arg(wp->getY(),0, 'f', 7).arg(wp->getZ(),0, 'f', 2));
+            }
+            break;
+        }
+        case MAV_FRAME_LOCAL_NED:
+        default:
+        {
+            if (wp->getParam1()>0)
+            {
+                m_ui->displayBar->setText(QString("Spline waypoint <b>(%1, %2, %3)</b> and wait there for %4 sec.").arg(wp->getX(),0, 'f', 2).arg(wp->getY(),0, 'f', 2).arg(wp->getZ(),0, 'f',2).arg(wp->getParam1()));
+            }
+            else
+            {
+                m_ui->displayBar->setText(QString("Spline waypoint <b>(%1, %2, %3)</b>.").arg(wp->getX(),0, 'f', 2).arg(wp->getY(),0, 'f', 2).arg(wp->getZ(),0, 'f', 2));
+            }
+            break;
+        }
+        } //end Frame switch
+        break;
+    }
     case MAV_CMD_NAV_LOITER_UNLIM:
     {
         switch (wp->getFrame())
@@ -309,6 +345,39 @@ void WaypointViewOnlyView::updateValues()
         } //end Frame switch
         break;
     }
+    case MAV_CMD_NAV_LOITER_TO_ALT:
+    {
+        switch (wp->getFrame())
+        {
+        case MAV_FRAME_GLOBAL_RELATIVE_ALT:
+        case MAV_FRAME_GLOBAL:
+        {
+            if (wp->getParam1()>=0)
+            {
+                m_ui->displayBar->setText(QString("Go to <b>(</b>lat <b>%1<sup>o</sup></b>, lon <b>%2<sup>o</sup></b>, alt <b>%3)</b> and loiter there until altitude reached (clockwise); radius: %4").arg(wp->getX(),0, 'f', 7).arg(wp->getY(),0, 'f', 7).arg(wp->getZ(),0, 'f', 2).arg(wp->getParam2()));
+            }
+            else
+            {
+                m_ui->displayBar->setText(QString("Go to <b>(</b>lat <b>%1<sup>o</sup></b>, lon <b>%2<sup>o</sup></b>, alt <b>%3)</b> and loiter there loiter there until altitude reached  (counter-clockwise); radius: %4").arg(wp->getX(),0, 'f', 7).arg(wp->getY(),0, 'f', 7).arg(wp->getZ(),0, 'f', 2).arg(-wp->getParam2()));
+            }
+            break;
+        }
+        case MAV_FRAME_LOCAL_NED:
+        default:
+        {
+            if (wp->getParam1()>=0)
+            {
+                m_ui->displayBar->setText(QString("Go to <b>(%1, %2, %3)</b> and loiter there until altitude is reached (clockwise); radius: %4").arg(wp->getX(),0, 'f', 2).arg(wp->getY(),0, 'f', 2).arg(wp->getZ(),0, 'f',2).arg(wp->getParam2()));
+            }
+            else
+            {
+                m_ui->displayBar->setText(QString("Go to <b>(%1, %2, %3)</b> and loiter there until altitude is reached (counter-clockwise); radius: %4").arg(wp->getX(),0, 'f', 2).arg(wp->getY(),0, 'f', 2).arg(wp->getZ(),0, 'f', 2).arg(-wp->getParam2()));
+            }
+            break;
+        }
+        } //end Frame switch
+        break;
+    }
     case MAV_CMD_NAV_RETURN_TO_LAUNCH:
     {
         m_ui->displayBar->setText(QString("Return to launch location"));
@@ -353,14 +422,56 @@ void WaypointViewOnlyView::updateValues()
         break;
         break;
     }
-    case MAV_CMD_DO_JUMP:
+    case MAV_CMD_NAV_CONTINUE_AND_CHANGE_ALT:
     {
-        if (wp->getParam2()>0)
+        switch (wp->getFrame())
         {
-            m_ui->displayBar->setText(QString("Jump to waypoint %1. Jumps left: %2").arg(wp->getParam1()).arg(wp->getParam2()));
+        case MAV_FRAME_GLOBAL_RELATIVE_ALT:
+        case MAV_FRAME_GLOBAL:
+        {
+            m_ui->displayBar->setText(QString("Change Alt & Cont. Go to alt <b>%1)</b>").arg(wp->getAltitude(),0, 'f', 2));
+            break;
+        }
+        case MAV_FRAME_LOCAL_NED:
+        default:
+        {
+            m_ui->displayBar->setText(QString("Change Alt & Cont. Go to Z <b>%1)</b>").arg(wp->getZ(),0, 'f', 2));
+            break;
+        }
+        } //end Frame switch
+        break;
+        break;
+    }
+    case MAV_CMD_DO_SET_CAM_TRIGG_DIST:
+        if (wp->getParam1()>0)
+        {
+        	m_ui->displayBar->setText(QString("Set camera trigging by distance to <b>%1</b> meters.").arg(wp->getParam1()));
         }
         else
         {
+        	m_ui->displayBar->setText(QString("Camera trigging by distance disabled."));
+        }
+        break;
+    case MAV_CMD_DO_CHANGE_SPEED:
+        if (wp->getParam1()>0)
+        {
+        	m_ui->displayBar->setText(QString("Set <b>Ground Speed</b> to </b>%1</b> m/s, and throttle to <b>%2</b>\% .(-1 = no change)").arg(wp->getParam2()).arg(wp->getParam3()));
+        }
+        else
+        {
+        	m_ui->displayBar->setText(QString("Set <b>Air Speed</b> to </b>%1</b> m/s, and throttle to <b>%2</b>\% .(-1 = no change)").arg(wp->getParam2()).arg(wp->getParam3()));
+        }
+        break;
+
+    case MAV_CMD_DO_JUMP:
+    {
+        if (wp->getParam2() > 0)        {
+            m_ui->displayBar->setText(QString("Jump to waypoint %1. Jumps left: %2").arg(wp->getParam1()).arg(wp->getParam2()));
+        }
+        else if (wp->getParam2() < 0)        {
+            m_ui->displayBar->setText(QString("Jump to waypoint %1 for ever.").arg(wp->getParam1()).arg(wp->getParam2()));
+
+        } else {
             m_ui->displayBar->setText(QString("No jumps left. Proceed to next waypoint."));
         }
         break;
@@ -370,6 +481,44 @@ void WaypointViewOnlyView::updateValues()
         m_ui->displayBar->setText(QString("Delay: %1 sec").arg(wp->getParam1()));
         break;
     }
+    case MAV_CMD_DO_SET_ROI:
+    {
+        m_ui->displayBar->setText(QString("ROI at (<b>lat</b> %1<sup>o</sup>, <b>lon</b> %2<sup>o</sup>)")
+                                  .arg(wp->getLatitude(),0, 'f', 7).arg(wp->getLongitude(),0, 'f', 7));
+        break;
+    }
+    case MAV_CMD_DO_DIGICAM_CONTROL:
+    {
+        QString lockStateString = "...";
+        int lockState = static_cast<int>(wp->getParam5());
+        switch (lockState) {
+            case 0: // Re-lock
+                lockStateString = "Re-lock";
+            break;
+            case 1: // Ignore
+                lockStateString = "Ignore";
+            break;
+            case 2: // Lock
+                lockStateString = "Lock";
+            break;
+            default:
+                lockStateString = "unknown lock state";
+        }
+
+        m_ui->displayBar->setText(QString("DigiCamControl %1 focus: %2 shutter: %3")
+                                  .arg(wp->getParam1() > 0.0 ? "on" : "off")
+                                  .arg(lockStateString)
+                                  .arg(wp->getParam5() > 0.0 ? "trigger" : "..."));
+        break;
+    }
+
+    case MAV_CMD_DO_SET_REVERSE:
+    {
+        m_ui->displayBar->setText(QString("Set Reverse: %1 ").arg(wp->getParam1() > 0.0 ? "Reverse" : "Forward"));
+        break;
+    }
+
+
 #ifdef MAVLINK_ENABLED_PIXHAWK
     case MAV_CMD_DO_START_SEARCH:
     {

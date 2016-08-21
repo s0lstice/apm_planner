@@ -1,4 +1,27 @@
-#include "QsLog.h"
+/*===================================================================
+APM_PLANNER Open Source Ground Control Station
+
+(c) 2014 APM_PLANNER PROJECT <http://www.diydrones.com>
+(c) author: Bill Bonney <billbonney@communistech.com>
+
+This file is part of the APM_PLANNER project
+
+    APM_PLANNER is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    APM_PLANNER is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with APM_PLANNER. If not, see <http://www.gnu.org/licenses/>.
+
+======================================================================*/
+
+#include "logging.h"
 #include "configuration.h"
 #include "ParamCompareDialog.h"
 #include "ui_ParamCompareDialog.h"
@@ -52,7 +75,7 @@ ParamCompareDialog::~ParamCompareDialog()
 void ParamCompareDialog::initConnections()
 {
     connect(ui->cancelButton, SIGNAL(clicked()), this, SLOT(reject()));
-    connect(ui->loadButton, SIGNAL(clicked()), this, SLOT(loadParameterFile()));
+    connect(ui->loadButton, SIGNAL(clicked()), this, SLOT(showLoadFileDialog()));
     connect(ui->continueButton, SIGNAL(clicked()), this, SLOT(saveNewParameters()));
     connect(ui->checkAllBox, SIGNAL(clicked()), this, SLOT(checkAll()));
 
@@ -63,7 +86,18 @@ void ParamCompareDialog::setAcceptButtonLabel(const QString &label)
     if (ui) ui->continueButton->setText(label);
 }
 
-void ParamCompareDialog::loadParameterFile()
+void ParamCompareDialog::dialogRejected()
+{
+    QFileDialog *dialog = qobject_cast<QFileDialog*>(sender());
+    QLOG_DEBUG() << "Dialog Rejected:" << dialog;
+    if (dialog){
+        dialog->deleteLater();
+        dialog = NULL;
+    }
+
+}
+
+void ParamCompareDialog::showLoadFileDialog()
 {
     ui->compareTableWidget->setRowCount(0);
 
@@ -72,14 +106,27 @@ void ParamCompareDialog::loadParameterFile()
     if(!parameterDir.exists())
         parameterDir.mkdir(parameterDir.path());
 
-    QString filename = QFileDialog::getOpenFileName(this,tr("Open File To Compare"),
-                                                    QGC::parameterDirectory(), "*.param");
-    QApplication::processEvents(); // Helps clear dialog from screen
+    QFileDialog *fileDialog = new QFileDialog(this,"Load",QGC::parameterDirectory());
+    QLOG_DEBUG() << "CREATED:" << fileDialog;
+    fileDialog->setFileMode(QFileDialog::ExistingFile);
+    fileDialog->setNameFilter("*.param *.txt");
+    fileDialog->open(this, SLOT(loadParameterFile()));
+    connect(fileDialog,SIGNAL(rejected()),SLOT(dialogRejected()));
+}
 
+void ParamCompareDialog::loadParameterFile()
+{
+    QFileDialog *dialog = qobject_cast<QFileDialog*>(sender());
+    if (!dialog) {
+        return;
+    }
+    if (dialog->selectedFiles().size() == 0) {
+        return;
+    }
+    QString filename = dialog->selectedFiles().at(0);
     if(filename.length() == 0) {
         return;
     }
-    QApplication::processEvents(); // Helps clear dialog from screen
 
     loadParameterFile(filename);
 }
@@ -110,7 +157,7 @@ void ParamCompareDialog::loadParameterFile(const QString &filename)
 void ParamCompareDialog::populateParamListFromString(QString paramString, QMap<QString, UASParameter*>* list,
                                                      QWidget* widget = NULL)
 {
-    QStringList paramSplit = paramString.split("\n");
+    QStringList paramSplit = paramString.split(QGC::paramLineSplitRegExp());
     bool summaryComplete = false;
     bool summaryShown = false;
     QString summaryText;
@@ -118,7 +165,7 @@ void ParamCompareDialog::populateParamListFromString(QString paramString, QMap<Q
     foreach (QString paramLine, paramSplit) {
         if (!paramLine.startsWith("#")) {
             summaryComplete = true;
-            QStringList lineSplit = paramLine.split(",");
+            QStringList lineSplit = paramLine.split(QGC::paramSplitRegExp());
             if (lineSplit.size() == 2)
             {
                 bool ok;
@@ -166,7 +213,7 @@ void ParamCompareDialog::compareLists()
         if (currentParam != NULL){
             UASParameter* newParam = m_newList->value(keys[count]);
 
-            if (currentParam->value().toDouble() != newParam->value().toDouble() ){
+            if ( !paramCompareEqual(currentParam->value(), newParam->value()) ){
                 QLOG_DEBUG() << "Difference : " << currentParam->name()
                              << " current: " << currentParam->value() << " new:" << newParam->value();
 
@@ -235,5 +282,19 @@ void ParamCompareDialog::checkAll()
             QTableWidgetItem* item = table->item(rowCount, PCD_COLUMN_CHECKBOX);
             if (item) item->setCheckState(Qt::Unchecked);
         }
+    }
+}
+
+bool ParamCompareDialog::paramCompareEqual(const QVariant &leftValue, const QVariant &rightValue)
+{
+    QString left = QString::number(leftValue.toDouble(), 'f', 6);
+    QString right = QString::number(rightValue.toDouble(), 'f', 6);
+
+    QLOG_DEBUG() << "left:" << left << " right:" << right;
+
+    if (left.contains(right)){
+        return true;
+    } else {
+        return false;
     }
 }

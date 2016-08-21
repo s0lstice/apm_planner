@@ -12,7 +12,7 @@
   </property>
   <property name="minimumSize">
    <size>
-    <width>1080</width>
+    <width>1020</width>
     <height>576</height>
    </size>
   </property>
@@ -51,7 +51,7 @@
      <x>0</x>
      <y>0</y>
      <width>1080</width>
-     <height>21</height>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuMGround">
@@ -79,7 +79,16 @@
     <property name="title">
      <string>Communication</string>
     </property>
-    <addaction name="actionAdd_Link"/>
+    <widget class="QMenu" name="menuAdd_Link">
+     <property name="title">
+      <string>Add Link</string>
+     </property>
+     <addaction name="actionSerial"/>
+     <addaction name="actionTCP"/>
+     <addaction name="actionUDP"/>
+     <addaction name="actionUDPClient"/>
+    </widget>
+    <addaction name="menuAdd_Link"/>
     <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="menuTools">
@@ -92,6 +101,7 @@
     <addaction name="actionNewCustomWidget"/>
     <addaction name="actionLoadCustomWidgetFile"/>
     <addaction name="separator"/>
+    <addaction name="actionTerminalConsole"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -102,6 +112,8 @@
     <addaction name="actionDeveloper_Credits"/>
     <addaction name="actionDebug_Console"/>
     <addaction name="actionCheck_For_Updates"/>
+    <addaction name="separator"/>
+    <addaction name="actionDonate"/>
     <addaction name="separator"/>
     <addaction name="actionAbout_APM_Planner_2_0"/>
    </widget>
@@ -189,15 +201,6 @@
     <string>Ctrl+K</string>
    </property>
   </action>
-  <action name="actionAdd_Link">
-   <property name="icon">
-    <iconset resource="../../qgroundcontrol.qrc">
-     <normaloff>:/files/images/actions/list-add.svg</normaloff>:/files/images/actions/list-add.svg</iconset>
-   </property>
-   <property name="text">
-    <string>Add Link</string>
-   </property>
-  </action>
   <action name="actionConfiguration">
    <property name="icon">
     <iconset resource="../../qgroundcontrol.qrc">
@@ -216,7 +219,7 @@
      <normaloff>:/files/images/devices/input-gaming.svg</normaloff>:/files/images/devices/input-gaming.svg</iconset>
    </property>
    <property name="text">
-    <string>Joystick Test</string>
+    <string>Joystick</string>
    </property>
    <property name="visible">
     <bool>true</bool>
@@ -563,6 +566,42 @@
   <action name="actionLoad_tlog">
    <property name="text">
     <string>Load tlog</string>
+   </property>
+  </action>
+  <action name="actionSerial">
+   <property name="text">
+    <string>Serial</string>
+   </property>
+  </action>
+  <action name="actionTCP">
+   <property name="text">
+    <string>TCP</string>
+   </property>
+  </action>
+  <action name="actionUDP">
+   <property name="text">
+    <string>UDP</string>
+   </property>
+  </action>
+  <action name="actionTerminalConsole">
+   <property name="text">
+    <string>Terminal Console</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+M</string>
+   </property>
+  </action>
+  <action name="actionUDPClient">
+   <property name="text">
+    <string>UDP Client</string>
+   </property>
+   <property name="toolTip">
+    <string>UDP Client</string>
+   </property>
+  </action>
+  <action name="actionDonate">
+   <property name="text">
+    <string>Donate</string>
    </property>
   </action>
  </widget>

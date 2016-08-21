@@ -1,4 +1,26 @@
-#include "QsLog.h"
+/*===================================================================
+APM_PLANNER Open Source Ground Control Station
+
+(c) 2014 APM_PLANNER PROJECT <http://www.diydrones.com>
+(c) author: Bill Bonney <billbonney@communistech.com>
+
+This file is part of the APM_PLANNER project
+
+    APM_PLANNER is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    APM_PLANNER is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with APM_PLANNER. If not, see <http://www.gnu.org/licenses/>.
+
+======================================================================*/
+#include "logging.h"
 #include "configuration.h"
 #include <QMessageBox>
 #include <QDesktopServices>
@@ -18,12 +40,12 @@ DownloadRemoteParamsDialog::DownloadRemoteParamsDialog(QWidget *parent, bool ove
     m_extension(".param"),
     m_version("?ref=master"),
     m_networkReply(NULL),
+    m_httpRequestAborted(false),
     m_overwriteFile(overwriteFile)
 {
     QLOG_DEBUG() << "DownloadRemoteParamsDialog overwriteFile" << m_overwriteFile;
     ui->setupUi(this);
 
-    connect(this, SIGNAL(canceled()), this, SLOT(cancelDownload()));
     connect(ui->downloadButton, SIGNAL(clicked()), this, SLOT(downloadButtonClicked()));
     connect(ui->closeButton, SIGNAL(clicked()), this, SLOT(closeButtonClicked()));
     connect(ui->refreshButton, SIGNAL(clicked()), this, SLOT(refreshParamList()));
@@ -62,9 +84,25 @@ void DownloadRemoteParamsDialog::loadFileButtonClicked()
 {
     QLOG_DEBUG() << "loadButtonClicked";
 
-    QString filename = QFileDialog::getOpenFileName(this,"Open File", QGC::parameterDirectory());
+    QFileDialog *dialog = new QFileDialog(this, tr("Open File"), QGC::parameterDirectory());
+    dialog->setFileMode(QFileDialog::ExistingFile);
+    connect(dialog,SIGNAL(accepted()),this,SLOT(loadFileDialogAccepted()));
+    dialog->show();
+}
+void DownloadRemoteParamsDialog::loadFileDialogAccepted()
+{
+    QFileDialog *dialog = qobject_cast<QFileDialog*>(sender());
+    if (!dialog)
+    {
+        return;
+    }
+    if (dialog->selectedFiles().size() == 0)
+    {
+        //No file selected/cancel clicked
+        return;
+    }
+    QString filename = dialog->selectedFiles().at(0);
     QFile file(filename);
-    QApplication::processEvents(); // Helps clear dialog from screen
 
     if((filename.length() == 0)||!file.exists())
     {

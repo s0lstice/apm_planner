@@ -25,6 +25,7 @@
 * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 #include "waypointitem.h"
+#include <QGraphicsSceneMouseEvent>
 namespace mapcontrol
 {
     WayPointItem::WayPointItem(const internals::PointLatLng &coord,double const& altitude, MapGraphicItem *map) :
@@ -41,7 +42,8 @@ namespace mapcontrol
         isDragging(false),
         altitude(altitude), // sets a 10m default just in case
         heading(0),
-        number(0)
+        number(0),
+        m_mouseDown(false)
     {
         picture.load(QString::fromUtf8(":/markers/images/marker.png"));
         number=WayPointItem::snumber;
@@ -103,6 +105,12 @@ namespace mapcontrol
     {
         if(event->button()==Qt::LeftButton)
         {
+            if (m_mouseDown)
+            {
+                //Mouse is already pressed
+                return;
+            }
+            m_mouseDown = true;
             Q_ASSERT(text == NULL);
             Q_ASSERT(textBG == NULL);
 
@@ -125,6 +133,7 @@ namespace mapcontrol
     {
         if(event->button()==Qt::LeftButton)
         {
+            m_mouseDown = false;
             delete text;
             text = NULL;
             delete textBG;
@@ -242,7 +251,7 @@ namespace mapcontrol
             numberIBG->setBrush(Qt::black);
             numberIBG->setOpacity(0.5);
             numberI->setZValue(3);
-            numberI->setPen(QPen(Qt::white));
+            numberI->setBrush(Qt::white);
             numberI->setPos(18,-picture.height()/2-2);
             numberIBG->setPos(18,-picture.height()/2-2);
             numberI->setText(QString::number(number));
@@ -321,7 +330,7 @@ namespace mapcontrol
     void WayPointItem::RefreshToolTip()
     {
         QString coord_str = QString::number(coord.Lat(), 'f', 6) + "   " + QString::number(coord.Lng(), 'f', 6);
-        setToolTip(QString("WayPoint Number: %1\nDescription: %2\nCoordinate: %4\nAltitude: %5 m (MSL)\nHeading: %6 deg").arg(QString::number(WayPointItem::number)).arg(description).arg(coord_str).arg(QString::number(altitude)).arg(QString::number(heading)));
+        setToolTip(QString("WayPoint Number: %1\nDescription: %2\nCoordinate: %4\nAltitude: %5 m\nHeading: %6 deg").arg(QString::number(WayPointItem::number)).arg(description).arg(coord_str).arg(QString::number(altitude)).arg(QString::number(heading)));
     }
 
     int WayPointItem::snumber=0;

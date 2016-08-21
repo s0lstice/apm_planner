@@ -28,8 +28,11 @@ This file is part of the QGROUNDCONTROL project
  *   @author Lorenz Meier <mavteam@student.ethz.ch>
  *
  */
+#include <cmath>
 
-#include "QsLog.h"
+
+
+#include "logging.h"
 #include "UASManager.h"
 #include "UAS.h"
 #include "HUD.h"
@@ -43,7 +46,6 @@ This file is part of the QGROUNDCONTROL project
 #include <QPaintEvent>
 
 
-#include <cmath>
 #include <qmath.h>
 #include <limits>
 
@@ -57,6 +59,7 @@ This file is part of the QGROUNDCONTROL project
  */
 HUD::HUD(int width, int height, QWidget* parent)
     : QLabel(parent),
+      image(NULL),
       uas(NULL),
       yawInt(0.0f),
       mode(tr("UNKNOWN MODE")),
@@ -117,15 +120,14 @@ HUD::HUD(int width, int height, QWidget* parent)
       nextOfflineImage(""),
       HUDInstrumentsEnabled(false),
       videoEnabled(true),
+      imageLoggingEnabled(false),
       xImageFactor(1.0),
       yImageFactor(1.0),
-      imageRequested(false),
-      imageLoggingEnabled(false),
-    image(NULL)
+      imageRequested(false)
 {
     // Fill with black background
     QImage fill = QImage(width, height, QImage::Format_Indexed8);
-    fill.setNumColors(3);
+    fill.setColorCount(3);
     fill.setColor(0, qRgb(0, 0, 0));
     fill.setColor(1, qRgb(0, 0, 0));
     fill.setColor(2, qRgb(0, 0, 0));
@@ -151,15 +153,18 @@ HUD::HUD(int width, int height, QWidget* parent)
     fontDatabase = QFontDatabase();
     const QString fontFileName = ":/general/vera.ttf"; ///< Font file is part of the QRC file and compiled into the app
     const QString fontFamilyName = "Bitstream Vera Sans";
-    if(!QFile::exists(fontFileName)) QLOG_DEBUG() << "ERROR! font file: " << fontFileName << " DOES NOT EXIST!";
-
+    if(!QFile::exists(fontFileName)) {
+        QLOG_DEBUG() << "ERROR! font file: " << fontFileName << " DOES NOT EXIST!";
+    }
     fontDatabase.addApplicationFont(fontFileName);
     font = fontDatabase.font(fontFamilyName, "Roman", qMax(5,(int)(10.0f*scalingFactor*1.2f+0.5f)));
     QFont* fontPtr = &font;
     if (!fontPtr) {
         QLOG_DEBUG() << "ERROR! FONT NOT LOADED!";
     } else {
-        if (font.family() != fontFamilyName) QLOG_DEBUG() << "ERROR! WRONG FONT LOADED: " << fontFamilyName;
+        if (font.family() != fontFamilyName) {
+            QLOG_DEBUG() << "ERROR! WRONG FONT LOADED: " << fontFamilyName;
+        }
     }
 
     // Connect with UAS
@@ -464,21 +469,6 @@ void HUD::paintText(QString text, QColor color, float fontSize, float refX, floa
     painter->setPen(prevPen);
 }
 
-/**
- * @param referencePositionX horizontal position in the reference mm-unit space
- * @param referencePositionY horizontal position in the reference mm-unit space
- * @param referenceWidth width in the reference mm-unit space
- * @param referenceHeight width in the reference mm-unit space
- */
-void HUD::setupGLView(float referencePositionX, float referencePositionY, float referenceWidth, float referenceHeight)
-{
-    int pixelWidth  = (int)(referenceWidth * scalingFactor);
-    int pixelHeight = (int)(referenceHeight * scalingFactor);
-    // Translate and scale the GL view in the virtual reference coordinate units on the screen
-    int pixelPositionX = (int)((referencePositionX * scalingFactor) + xCenterOffset);
-    int pixelPositionY = this->height() - (referencePositionY * scalingFactor) + yCenterOffset - pixelHeight;
-}
-
 void HUD::paintRollPitchStrips()
 {
 }
@@ -486,7 +476,7 @@ void HUD::paintRollPitchStrips()
 
 void HUD::paintEvent(QPaintEvent *event)
 {
-
+    Q_UNUSED(event)
     paintHUD();
 }
 
@@ -562,7 +552,6 @@ void HUD::paintHUD()
 
             xImageFactor = width() / (float)glImage.width();
             yImageFactor = height() / (float)glImage.height();
-            float imageFactor = qMin(xImageFactor, yImageFactor);
             // Resize to correct size and fill with image
             // FIXME
 
@@ -1193,7 +1182,7 @@ void HUD::setImageSize(int width, int height, int depth, int channels)
         if (depth <= 8 && channels == 1) {
             image = new QImage(receivedWidth, receivedHeight, QImage::Format_Indexed8);
             // Create matching color table
-            image->setNumColors(256);
+            image->setColorCount(256);
             for (int i = 0; i < 256; i++) {
                 image->setColor(i, qRgb(i, i, i));
                 //QLOG_DEBUG() << __FILE__ << __LINE__ << std::hex << i;
@@ -1251,7 +1240,7 @@ void HUD::commitRawDataToGL()
         QImage* newImage = new QImage(rawImage, receivedWidth, receivedHeight, format);
         if (format == QImage::Format_Indexed8) {
             // Create matching color table
-            newImage->setNumColors(256);
+            newImage->setColorCount(256);
             for (int i = 0; i < 256; i++) {
                 newImage->setColor(i, qRgb(i, i, i));
                 //QLOG_DEBUG() << __FILE__ << __LINE__ << std::hex << i;

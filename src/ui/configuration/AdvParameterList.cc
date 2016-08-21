@@ -23,7 +23,7 @@ This file is part of the APM_PLANNER project
 #include "AdvParameterList.h"
 #include "DownloadRemoteParamsDialog.h"
 #include "ParamCompareDialog.h"
-#include "QsLog.h"
+#include "logging.h"
 #include <QTableWidgetItem>
 #include <QInputDialog>
 #include <QFileDialog>
@@ -40,12 +40,13 @@ This file is part of the APM_PLANNER project
 #define ADV_TABLE_COLUMN_COUNT ADV_TABLE_COLUMN_DESCRIPTION + 1
 
 AdvParameterList::AdvParameterList(QWidget *parent) : AP2ConfigWidget(parent),
+    m_searchIndex(0),
     m_paramDownloadState(starting),
     m_paramDownloadCount(0),
     m_writingParams(false),
     m_paramsWritten(0),
     m_paramsToWrite(0),
-    m_searchIndex(0)
+    m_fileDialog(NULL)
 {
     ui.setupUi(this);
     connect(ui.refreshPushButton, SIGNAL(clicked()),this, SLOT(refreshButtonClicked()));
@@ -60,6 +61,7 @@ AdvParameterList::AdvParameterList(QWidget *parent) : AP2ConfigWidget(parent),
     connect(ui.searchLineEdit, SIGNAL(textEdited(QString)), this, SLOT(findStringInTable(QString)));
     connect(ui.nextItemButton, SIGNAL(clicked()), this, SLOT(nextItemInSearch()));
     connect(ui.previousItemButton, SIGNAL(clicked()), this, SLOT(previousItemInSearch()));
+    connect(ui.resetButton, SIGNAL(clicked()), this, SLOT(resetButtonClicked()));
 
 
     ui.tableWidget->setColumnCount(ADV_TABLE_COLUMN_COUNT);
@@ -89,6 +91,26 @@ void AdvParameterList::tableWidgetItemChanged(QTableWidgetItem* item)
         //Invalid item, something has gone awry.
         return;
     }
+    if (item->column() != ADV_TABLE_COLUMN_VALUE)
+    {
+        //Don't want to edit values that aren't actual values
+        return;
+    }
+
+    // This is to force the use of '.' decimal as the seperator. ie use the 'C' locale.
+    // thousand seperators are also rejected in 'C' locale
+    bool ok = false;
+    double number = item->text().toDouble(&ok);
+    if (!ok)
+    {
+        //Failed to convert
+        QMessageBox::warning(this,"Error","Failed to convert number, please verify your input uses '.' as decimal and no seperator and try again");
+        disconnect(ui.tableWidget, SIGNAL(itemChanged(QTableWidgetItem*)),this, SLOT(tableWidgetItemChanged(QTableWidgetItem*)));
+        ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_VALUE)->setText(m_paramToOrigValueMap[ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_PARAM)->text()]);
+        connect(ui.tableWidget, SIGNAL(itemChanged(QTableWidgetItem*)),this, SLOT(tableWidgetItemChanged(QTableWidgetItem*)));
+        return;
+    }
+
     m_origBrushList.append(ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_PARAM)->text());
     QBrush brush = QBrush(QColor::fromRgb(132,181,132));
     ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_PARAM)->setBackground(brush);
@@ -96,7 +118,9 @@ void AdvParameterList::tableWidgetItemChanged(QTableWidgetItem* item)
     ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_UNIT)->setBackground(brush);
     ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_RANGE)->setBackground(brush);
     ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_DESCRIPTION)->setBackground(brush);
-    m_modifiedParamMap[ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_PARAM)->text()] = item->text().toDouble();
+    m_modifiedParamMap[ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_PARAM)->text()] = number;
+    m_paramToOrigValueMap[ui.tableWidget->item(item->row(),ADV_TABLE_COLUMN_PARAM)->text()] = item->text();
+
 
     int itemsChanged = m_modifiedParamMap.size();
 
@@ -106,6 +130,16 @@ void AdvParameterList::tableWidgetItemChanged(QTableWidgetItem* item)
     ui.paramProgressBar->setMaximum(itemsChanged);
     ui.progressLabel->show();
     ui.paramProgressBar->show();
+}
+
+void AdvParameterList::resetParamWriteWidget()
+{
+    ui.paramProgressBar->setValue(0);
+    m_paramsWritten = 0;
+    ui.progressLabel->setText("No params to write");
+    ui.progressLabel->show();
+    QTimer::singleShot(500,ui.progressLabel, SLOT(hide()));
+    QTimer::singleShot(500,ui.paramProgressBar, SLOT(hide()));
 }
 
 void AdvParameterList::writeButtonClicked()
@@ -129,10 +163,7 @@ void AdvParameterList::writeButtonClicked()
     m_paramsWritten = 0;
 
     if(m_paramsToWrite == 0) {
-        ui.paramProgressBar->setValue(0);
-        ui.progressLabel->setText("No params to write");
-        ui.progressLabel->show();
-        QTimer::singleShot(700,ui.progressLabel, SLOT(hide()));
+        resetParamWriteWidget();
     }
 
     m_modifiedParamMap.clear();
@@ -140,6 +171,8 @@ void AdvParameterList::writeButtonClicked()
 
 AdvParameterList::~AdvParameterList()
 {
+    delete m_fileDialog;
+    m_fileDialog = NULL;
 }
 
 void AdvParameterList::refreshButtonClicked()
@@ -154,6 +187,8 @@ void AdvParameterList::refreshButtonClicked()
     m_paramsToWrite = 0;
     m_paramsWritten = 0;
 
+    resetParamWriteWidget();
+
     m_uas->getParamManager()->requestParameterList();
     m_paramDownloadState = starting;
 }
@@ -167,6 +202,8 @@ void AdvParameterList::setParameterMetaData(const QString &name, const QString &
     m_paramToUnitMap[name] = unit;
     m_paramToRangeMap[name] = range;
 }
+
+
 void AdvParameterList::loadButtonClicked()
 {
     if (!m_uas)
@@ -175,9 +212,26 @@ void AdvParameterList::loadButtonClicked()
         return;
     }
 
-    QString filename = QFileDialog::getOpenFileName(this,"Open File", QGC::parameterDirectory());
-    QApplication::processEvents(); // Helps clear dialog from screen
+    QFileDialog *fileDialog = new QFileDialog(this,"Load",QGC::parameterDirectory());
+    QLOG_DEBUG() << "CREATED:" << fileDialog;
+    fileDialog->setFileMode(QFileDialog::ExistingFile);
+    fileDialog->setNameFilter("*.param *.txt");
+    fileDialog->open(this, SLOT(loadDialogAccepted()));
+    connect(fileDialog,SIGNAL(rejected()),SLOT(dialogRejected()));
+}
 
+void AdvParameterList::loadDialogAccepted()
+{
+    QFileDialog *dialog = qobject_cast<QFileDialog*>(sender());
+    if (!dialog)
+    {
+        return;
+    }
+    if (dialog->selectedFiles().size() == 0)
+    {
+        return;
+    }
+    QString filename = dialog->selectedFiles().at(0);
     if(filename.length() == 0)
     {
         return;
@@ -208,14 +262,48 @@ void AdvParameterList::loadButtonClicked()
             }
         }
     }
+}
+
+void AdvParameterList::dialogRejected()
+{
+    QFileDialog *dialog = qobject_cast<QFileDialog*>(sender());
+    QLOG_DEBUG() << "Dialog Rejected:" << dialog;
+    if (dialog){
+        dialog->deleteLater();
+        dialog = NULL;
+    }
 
 }
 
 void AdvParameterList::saveButtonClicked()
 {
-    QString filename = QFileDialog::getSaveFileName(this,"Save File", QGC::parameterDirectory());
-    QApplication::processEvents(); // Helps clear dialog from screen
+    if (!m_uas)
+    {
+        showNullMAVErrorMessageBox();
+        return;
+    }
 
+    QFileDialog *fileDialog = new QFileDialog(this,"Save",QGC::parameterDirectory());
+    QLOG_DEBUG() << "CREATED:" << fileDialog;
+    fileDialog->setAcceptMode(QFileDialog::AcceptSave);
+    fileDialog->setNameFilter("*.param *.txt");
+    fileDialog->selectFile("parameter.param");
+    fileDialog->open(this, SLOT(saveDialogAccepted()));
+    connect(fileDialog,SIGNAL(rejected()),SLOT(dialogRejected()));
+}
+
+void AdvParameterList::saveDialogAccepted()
+{
+    QFileDialog *dialog = qobject_cast<QFileDialog*>(sender());
+    if (!dialog)
+    {
+        return;
+    }
+    if (dialog->selectedFiles().size() == 0)
+    {
+        return;
+    }
+    QString filename = dialog->selectedFiles().at(0);
     if(filename.length() == 0)
     {
         return;
@@ -231,29 +319,34 @@ void AdvParameterList::saveButtonClicked()
     QString fileheader = QInputDialog::getText(this,"Input file header","Header at beginning of file:");
 
     file.write(QString("#NOTE: " + QDateTime::currentDateTime().toString("M/d/yyyy h:m:s AP")
-                       + ": " + fileheader + "\r\n").toAscii());
+                       + ": " + fileheader + "\r\n").toLocal8Bit());
 
     QList<QString> paramnamelist = m_uas->getParamManager()->getParameterNames(1);
     for (int i=0;i<paramnamelist.size();i++)
     {
         QVariant value;
         m_uas->getParamManager()->getParameterValue(1,paramnamelist[i],value);
-        if (value.type() == QVariant::Double || value.type() == QMetaType::Float)
+        QMetaType::Type metaType(static_cast<QMetaType::Type>(value.type()));
+        if (metaType == QMetaType::Double || metaType == QMetaType::Float)
         {
-            file.write(paramnamelist[i].append(",").append(QString::number(value.toFloat(),'f',8)).append("\r\n").toAscii());
+            file.write(paramnamelist[i].append(",").append(QString::number(value.toFloat(),'f',8)).append("\r\n").toLocal8Bit());
         }
         else
         {
-            file.write(paramnamelist[i].append(",").append(QString::number(value.toInt())).append("\r\n").toAscii());
+            file.write(paramnamelist[i].append(",").append(QString::number(value.toInt())).append("\r\n").toLocal8Bit());
         }
     }
     file.flush();
     file.close();
+
+    dialog->deleteLater(); // cleanup dialog instance
+    dialog = NULL;
 }
 
 void AdvParameterList::parameterChanged(int /*uas*/, int /*component*/, QString parameterName, QVariant value)
 {
-    QLOG_DEBUG() << "APL::parameterChanged " << parameterName << ":" <<value.toFloat();
+    QLOG_DEBUG() << "Param:" << parameterName << ": " << value;
+
     disconnect(ui.tableWidget,SIGNAL(itemChanged(QTableWidgetItem*)),this,SLOT(tableWidgetItemChanged(QTableWidgetItem*)));
     if (!m_paramValueMap.contains(parameterName))
     {
@@ -266,7 +359,8 @@ void AdvParameterList::parameterChanged(int /*uas*/, int /*component*/, QString 
 
         // Param value
         QString valstr = "";
-        if (value.type() == QMetaType::Float || value.type() == QVariant::Double)
+        QMetaType::Type metaType(static_cast<QMetaType::Type>(value.type()));
+        if (metaType == QMetaType::Float || metaType == QMetaType::Double)
         {
             valstr = QString::number(value.toFloat(),'f',4);
         }
@@ -342,7 +436,8 @@ void AdvParameterList::parameterChanged(int /*uas*/, int /*component*/, QString 
     }
 
     QString valstr = "";
-    if (value.type() == QMetaType::Float || value.type() == QVariant::Double)
+    QMetaType::Type metaType(static_cast<QMetaType::Type>(value.type()));
+    if (metaType == QMetaType::Float || metaType == QMetaType::Double)
     {
         valstr = QString::number(value.toFloat(),'f',6);
     }
@@ -350,6 +445,7 @@ void AdvParameterList::parameterChanged(int /*uas*/, int /*component*/, QString 
     {
         valstr = QString::number(value.toInt(),'f',0);
     }
+    m_paramToOrigValueMap[parameterName] = valstr;
     m_paramValueMap[parameterName]->setText(valstr);
     connect(ui.tableWidget,SIGNAL(itemChanged(QTableWidgetItem*)),this,SLOT(tableWidgetItemChanged(QTableWidgetItem*)));
 
@@ -375,6 +471,8 @@ void AdvParameterList::parameterChanged(int /*uas*/, int /*component*/, QString 
 
 void AdvParameterList::parameterChanged(int uas, int component, int parameterCount, int parameterId, QString parameterName, QVariant value)
 {
+    Q_UNUSED(uas)
+    Q_UNUSED(parameterCount)
     // Create a parameter list model for comparison feature
     // [TODO] This needs to move to the global parameter model.
 
@@ -506,5 +604,24 @@ void AdvParameterList::previousItemInSearch()
         m_searchItemList[m_searchIndex]->setSelected(true);
     } else {
         m_searchIndex = m_searchItemList.count() - 1; // loops around
+    }
+}
+void AdvParameterList::resetButtonClicked()
+{
+    if (!m_uas)
+    {
+        showNullMAVErrorMessageBox();
+        return;
+    }
+    if (QMessageBox::question(this,"Warning","You are about to reset ALL EEPROM settings to their defaults and REBOOT the vehicle. Are you absolutely sure you want to do this?",QMessageBox::Yes,QMessageBox::No) == QMessageBox::Yes)
+    {
+        m_uas->setParameter(0,"FORMAT_VERSION",0); // Plane
+        m_uas->setParameter(0,"SYSID_SW_MREV",0); // Copter
+        QTimer::singleShot(1000,m_uas, SLOT(reboot()));
+        QMessageBox::information(this,"Reboot","Please power cycle your autopilot");
+    }
+    else
+    {
+        QMessageBox::information(this,".","No Reset!!");
     }
 }

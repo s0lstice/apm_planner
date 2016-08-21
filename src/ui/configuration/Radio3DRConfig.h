@@ -23,10 +23,10 @@ This file is part of the APM_PLANNER project
 #ifndef RADIO3DRCONFIG_H
 #define RADIO3DRCONFIG_H
 
-#include "QsLog.h"
+#include "logging.h"
 #include "SerialSettingsDialog.h"
 #include "Radio3DRSettings.h"
-#include "qserialport.h"
+#include <QtSerialPort/qserialport.h>
 
 #include <QPointer>
 #include <QWidget>
@@ -37,6 +37,7 @@ class Radio3DRSettings;
 class Radio3DRConfig : public QWidget
 {
     Q_OBJECT
+    static const int RADIO3DR_UPDATE_PORT_TIME = 3000;
 
     enum State { none, writeRadioSettings, resetRadioSettings, complete};
     
@@ -57,6 +58,8 @@ private slots:
 
     void loadSavedSerialSettings();
     void saveSerialSettings();
+
+    void flashButtonClicked();
 
     void writeLocalRadioSettings();
     void writeRemoteRadioSettings();
@@ -80,7 +83,7 @@ private:
     void resetUI();
     void initConnections();
     void addBaudComboBoxConfig(QComboBox *comboBox);
-    void fillPortsInfo(QComboBox &comboxBox);
+    void fillPortsInfo(QComboBox &comboBox);
     void addRadioBaudComboBoxConfig(QComboBox &comboBox);
     void addRadioAirBaudComboBoxConfig(QComboBox &comboBox);
     void addTxPowerComboBoxConfig(QComboBox &comboBox);
@@ -96,7 +99,7 @@ private:
     SerialSettings m_settings;
     Radio3DREeprom m_newRadioSettings;
     Radio3DREeprom m_remoteRadioSettings;
-    QPointer<QTimer> m_timer;
+    QTimer m_timer;
     QPointer<Radio3DRSettings> m_radioSettings;
     State m_state;
 };

@@ -48,7 +48,7 @@ QGCHilConfiguration::~QGCHilConfiguration()
 
 void QGCHilConfiguration::setVersion(QString version)
 {
-
+    Q_UNUSED(version);
 }
 
 void QGCHilConfiguration::on_simComboBox_currentIndexChanged(int index)
@@ -64,7 +64,7 @@ void QGCHilConfiguration::on_simComboBox_currentIndexChanged(int index)
     if(1 == index)
     {
         // Ensure the sim exists and is disabled
-        mav->enableHilFlightGear(false, "");
+        mav->enableHilFlightGear(false, "", true, this);
         QGCHilFlightGearConfiguration* hfgconf = new QGCHilFlightGearConfiguration(mav, this);
         hfgconf->show();
         ui->simulatorConfigurationLayout->addWidget(hfgconf);
@@ -77,6 +77,7 @@ void QGCHilConfiguration::on_simComboBox_currentIndexChanged(int index)
     }
     else if (2 == index || 3 == index)
     {
+        /*
         // Ensure the sim exists and is disabled
         mav->enableHilXPlane(false);
         QGCHilXPlaneConfiguration* hxpconf = new QGCHilXPlaneConfiguration(mav->getHILSimulation(), this);
@@ -90,6 +91,7 @@ void QGCHilConfiguration::on_simComboBox_currentIndexChanged(int index)
             xplane->setVersion((index == 2) ? 10 : 9);
             connect(xplane, SIGNAL(statusMessage(QString)), ui->statusLabel, SLOT(setText(QString)));
         }
+        */
     }
     else if (4)
     {

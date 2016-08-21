@@ -29,17 +29,18 @@ This file is part of the APM_PLANNER project
  */
 
 #include "ApmToolBar.h"
-#include "QsLog.h"
-#include "SerialLink.h"
+#include "logging.h"
 #include "LinkManager.h"
 #include "MainWindow.h"
 #include "ArduPilotMegaMAV.h"
-#include <QDeclarativeContext>
+#include <QQmlContext>
 #include <QGraphicsObject>
 #include <QTimer>
+#include <QQuickItem>
+#include <QQmlEngine>
 
-APMToolBar::APMToolBar(QWidget *parent):
-    QDeclarativeView(parent), m_uas(NULL), m_currentLink(NULL), m_disableOverride(false)
+APMToolBar::APMToolBar(QWindow *parent):
+    QQuickView(parent), m_uas(NULL), m_disableOverride(false), m_currentLinkId(0)
 {
     // Configure our QML object
     QLOG_DEBUG() << "qmlBaseDir" << QGC::shareDirectory();
@@ -50,9 +51,24 @@ APMToolBar::APMToolBar(QWidget *parent):
         QMessageBox::information(0,"Error", "" + QGC::shareDirectory() + "/qml/ApmToolBar.qml" + " not found. Please reinstall the application and try again");
         exit(-1);
     }
+    engine()->addImportPath("qml/"); //For local or win32 builds
+    engine()->addImportPath(QGC::shareDirectory() +"/qml"); //For installed linux builds
+    // access to ini file from QML
+    rootContext()->setContextProperty("Settings", &m_settings);
+
     setSource(url);
     QLOG_DEBUG() << "QML Status:" << status();
-    setResizeMode(QDeclarativeView::SizeRootObjectToView);
+    if (status() == QQuickView::Error)
+    {
+        QString errorstr = "";
+        for (int i=0;i<errors().size();i++)
+        {
+            errorstr += errors().at(i).toString() + "\n";
+        }
+        QMessageBox::information(0,"Error", "Unable to load ApmToolbar.qml. Please reinstall the application and try again. Errors are as follows:\n" + errorstr);
+        return;
+    }
+    setResizeMode(QQuickView::SizeRootObjectToView);
     this->rootContext()->setContextProperty("globalObj", this);
 
      // set the size of the device box and row spacing for icons
@@ -68,16 +84,26 @@ APMToolBar::APMToolBar(QWidget *parent):
 #endif
 
     connect(UASManager::instance(),SIGNAL(activeUASSet(UASInterface*)),this,SLOT(activeUasSet(UASInterface*)));
-    connect(LinkManager::instance(),SIGNAL(newLink(LinkInterface*)),
-            this,SLOT(newLinkCreated(LinkInterface*)));
+    connect(LinkManager::instance(),SIGNAL(newLink(int)),
+            this,SLOT(newLinkCreated(int)));
+
+    for (int i=0;i<LinkManager::instance()->getLinks().size();i++)
+    {
+        newLinkCreated(LinkManager::instance()->getLinks().at(i));
+    }
 
     connect(&m_heartbeatTimer, SIGNAL(timeout()), this, SLOT(stopHeartbeat()));
+
     QSettings settings;
     settings.beginGroup("QGC_MAINWINDOW");
     if (settings.contains("ADVANCED_MODE"))
     {
-       QMetaObject::invokeMethod(rootObject(),"setAdvancedMode", Q_ARG(QVariant, settings.value("ADVANCED_MODE").toBool()));
+        bool isAdvanced = settings.value("ADVANCED_MODE").toBool();
+        checkAdvancedMode(isAdvanced);
     }
+    connect(LinkManager::instance(),SIGNAL(linkChanged(int)),this,SLOT(updateLinkDisplay(int)));
+
+    connect(this, SIGNAL(triggerDonateView()), this, SLOT(selectDonateView()));
 }
 
 void APMToolBar::checkAdvancedMode(bool checked)
@@ -105,18 +131,6 @@ void APMToolBar::activeUasSet(UASInterface *uas)
                    this, SLOT(heartbeat(UASInterface*)));
         disconnect(m_uas,SIGNAL(parameterChanged(int,int,int,int,QString,QVariant)),
                 this,SLOT(parameterChanged(int,int,int,int,QString,QVariant)));
-
-        // disconnect signals from the active serial links
-        QList<SerialLink*> sList = SerialLink::getSerialLinks(uas);
-
-        foreach(SerialLink* slink, sList)  {
-            // for all connected serial ports for a UAS disconnect
-            disconnect(slink, SIGNAL(connected(LinkInterface*)),
-                            this, SLOT(connected(LinkInterface*)));
-            disconnect(slink, SIGNAL(disconnected(LinkInterface*)),
-                            this, SLOT(disconnected(LinkInterface*)));
-            m_currentLink = NULL;
-        }
     }
 
     QLOG_DEBUG() << "APMToolBar::ActiveUASSet " << uas;
@@ -142,21 +156,32 @@ void APMToolBar::activeUasSet(UASInterface *uas)
         rootObject()->setProperty("enableStatusDisplay", QVariant(true));
         rootObject()->setProperty("armed", QVariant(m_uas->isArmed()));
     }
+    rootObject()->setProperty("uasNameLabel",m_uas->getUASName());
 
     // Connect the signals from active links
     // disconnect signals from the active serial links
-    QList<SerialLink*> sList = SerialLink::getSerialLinks(uas);
-
-    foreach(SerialLink* slink, sList)  {
-        // for all connected serial ports for a UAS disconnect
-        connect(slink, SIGNAL(connected(LinkInterface*)),
-                        this, SLOT(connected(LinkInterface*)));
-        connect(slink, SIGNAL(disconnected(LinkInterface*)),
-                        this, SLOT(disconnected(LinkInterface*)));
-        if(slink->isConnected())
+    QList<int> linkidlist = uas->getLinkIdList();
+    bool currentlinkfound = false;
+    for (int i=0;i<linkidlist.size();i++)
+    {
+        if (m_currentLinkId == linkidlist.at(i))
         {
-            m_currentLink = slink;
-            updateLinkDisplay(slink);
+            currentlinkfound = true;
+        }
+    }
+    if (!currentlinkfound)
+    {
+        //We did not find the current link in the list of connected links.
+        //Change the current link to match the first connected link in this UAS
+        for (int i=0;i<linkidlist.size();i++)
+        {
+            if (LinkManager::instance()->getLinkConnected(linkidlist.at(i)))
+            {
+                // Show only the first actve link for a UAS
+                m_currentLinkId = linkidlist.at(i);
+                updateLinkDisplay(m_currentLinkId);
+                break;
+            }
         }
     }
 }
@@ -196,14 +221,14 @@ void APMToolBar::setPlotViewAction(QAction *action)
     connect(this, SIGNAL(triggerPlotView()), action, SIGNAL(triggered()));
 }
 
+void APMToolBar::setDonateViewAction(QAction *action)
+{
+    connect(action, SIGNAL(triggered()), this, SLOT(selectDonateView()));
+}
+
 void APMToolBar::setSimulationViewAction(QAction *action)
 {
     connect(this, SIGNAL(triggerSimulationView()), action, SIGNAL(triggered()));
-}
-
-void APMToolBar::setTerminalViewAction(QAction *action)
-{
-    connect(this, SIGNAL(triggerTerminalView()), action, SIGNAL(triggered()));
 }
 
 void APMToolBar::setConnectMAVAction(QAction *action)
@@ -240,84 +265,30 @@ void APMToolBar::selectSimulationView()
     QLOG_DEBUG() << "APMToolBar: selectSimulationView";
 }
 
+void APMToolBar::selectDonateView()
+{
+    QLOG_DEBUG() << "APMToolBar: selectDonateView";
+    QString donateUrl = "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=UKV3U28LVDGN4";
+    QDesktopServices::openUrl(QUrl(donateUrl));
+
+}
+
 void APMToolBar::selectPlotView()
 {
     QLOG_DEBUG() << "APMToolBar: selectPlotView";
 }
 
-void APMToolBar::selectTerminalView()
-{
-    QLOG_DEBUG() << "APMToolBar: selectTerminalView";
-}
-
-void APMToolBar::connected(LinkInterface *linkInterface)
-{
-    QLOG_DEBUG() << "APMToolBar: connecting to link" << linkInterface;
-
-    if (m_uas) {
-        // With an active UAS use the list of serial ports from that UAS
-        QList<SerialLink*> sList = SerialLink::getSerialLinks(m_uas);
-        foreach (SerialLink* sLink, sList) {
-            if (sLink == linkInterface){
-                m_currentLink = sLink;
-                updateLinkDisplay(m_currentLink);
-            }
-        }
-
-    } else {
-        // With no active UAS we make the connected port
-        // the current port. (Hopefully this results in an activeUAS
-        m_currentLink = linkInterface;
-        updateLinkDisplay(m_currentLink);
-    }
-}
-
-void APMToolBar::disconnected(LinkInterface *linkInterface)
-{
-    QLOG_DEBUG() << "APMToolBar: disconnected from link" << linkInterface;
-
-    if (m_uas) {
-        // With an active UAS use the list of serial ports from that UAS
-        QList<SerialLink*> sList = SerialLink::getSerialLinks(m_uas);
-        foreach (SerialLink* sLink, sList) {
-            if(m_currentLink == sLink) {
-                updateLinkDisplay(sLink);
-            }
-        }
-
-    } else {
-        // Else get the global serial list and update the display
-        // The global list will really only be one link, but if
-        // more we cannot determine which one to display, so it will be
-        // the last one disconnected properties.
-        QList<SerialLink*> sList = SerialLink::getSerialLinks(LinkManager::instance());
-        foreach (SerialLink* sLink, sList) {
-            updateLinkDisplay(sLink);
-        }
-    }
-}
-
 void APMToolBar::connectMAV()
 {
-    QLOG_DEBUG() << "APMToolBar: connectMAV " << m_uas << "with sLink" << m_currentLink;
+    QLOG_DEBUG() << "APMToolBar: connectMAV " << m_uas << "with sLink" << m_currentLinkId;
 
-    if ((m_uas == NULL)&&(m_currentLink == NULL)) {
-        // We don't have a link to connect on, create one
-        QLOG_DEBUG() << "APMToolBar: Creating a Serial Link";
-        MainWindow::instance()->addLink();
-        return;
+    if (LinkManager::instance()->getLinkConnected(m_currentLinkId))
+    {
+        LinkManager::instance()->disconnectLink(m_currentLinkId);
     }
-
-    if (m_currentLink) {
-        // Connect/Disconnect the current link
-        if(m_currentLink->isConnected()){
-            QLOG_DEBUG() << "APMToolBar: Disconnecting m_currentLink " << m_currentLink;
-            m_currentLink->disconnect();
-        } else {
-            QLOG_DEBUG() << "APMToolBar: Connecting m_currentLink " << m_currentLink;
-            m_currentLink->connect();
-        }
-
+    else
+    {
+        LinkManager::instance()->connectLink(m_currentLinkId);
     }
 }
 
@@ -345,48 +316,45 @@ APMToolBar::~APMToolBar()
 void APMToolBar::showConnectionDialog()
 {
     // Displays a UI where the user can select a MAV Link.
-    QLOG_DEBUG() << "APMToolBar: showConnectionDialog for current serial link " << m_currentLink;
-    if(m_currentLink) {
-        MainWindow::instance()->configLink(m_currentLink);
-    } else {
-        //
-    }
+    QLOG_DEBUG() << "APMToolBar: showConnectionDialog for current serial link " << m_currentLinkId;
+    MainWindow::instance()->configLink(m_currentLinkId);
 }
-
-void APMToolBar::updateLinkDisplay(LinkInterface* link)
+void APMToolBar::updateLinkDisplay(int linkid)
 {
-    if (!qobject_cast<SerialLink*>(link))
+    if (m_currentLinkId != linkid)
     {
-        //We only want to operate on serial links
+        //We only care about our current link
+        QLOG_TRACE() << "APMToolBar::updateLinkDisplay called with non current link. Current:" << m_currentLinkId << "called:" << linkid;
         return;
     }
-    QLOG_DEBUG() << "APMToolBar: updateLinkDisplay";
 
     QObject *object = rootObject();
-
-    if (link && object){
-        qint64 baudrate = link->getNominalDataRate();
-        object->setProperty("baudrateLabel", QString::number(baudrate));
-
-        QString linkName = link->getName();
-        object->setProperty("linkNameLabel", linkName);
-
-        setConnection(link->isConnected());
+    if (!object)
+    {
+        QLOG_FATAL() << "APMToolBar::updateLinkDisplay, null QML root object.";
+        return;
     }
+    LinkManager* lm = LinkManager::instance();
+    QString linkName = lm->getLinkShortName(linkid);
+    QString linkDetail = lm->getLinkDetail(linkid);
+
+    object->setProperty("linkDetailLabel", linkDetail);
+    object->setProperty("linkNameLabel", linkName);
+
+    bool connected = LinkManager::instance()->getLinkConnected(linkid);
+    setConnection(connected);
+    QLOG_DEBUG() << "APMToolBar: updateLinkDisplay" << linkName <<":"<< linkDetail <<" connected:" << connected;
 }
 
-void APMToolBar::newLinkCreated(LinkInterface* newLink)
+void APMToolBar::newLinkCreated(int linkid)
 {
-    SerialLink* sLink = dynamic_cast<SerialLink*>(newLink);
-    if(sLink) {
-        QLOG_DEBUG() << "APMToolBar: new Serial Link Created" << newLink;
-        m_currentLink = sLink;
-        updateLinkDisplay(m_currentLink);
-        connect(m_currentLink,SIGNAL(updateLink(LinkInterface*)),this,SLOT(updateLinkDisplay(LinkInterface*)));
-        connect(m_currentLink, SIGNAL(connected(LinkInterface*)),
-                        this, SLOT(connected(LinkInterface*)));
-        connect(m_currentLink, SIGNAL(disconnected(LinkInterface*)),
-                        this, SLOT(disconnected(LinkInterface*)));
+    if (LinkManager::instance()->getLinkType(linkid) == LinkInterface::SERIAL_LINK)
+    {
+        //We want to use this one.
+        QLOG_DEBUG() << "APMToolBar: new Serial Link Created" << linkid;
+        m_currentLinkId = linkid;
+        updateLinkDisplay(m_currentLinkId);
+
     }
 }
 
@@ -401,17 +369,17 @@ void APMToolBar::setModeText(const QString &text)
 
     switch (m_uas->getSystemType()){
     case MAV_TYPE_FIXED_WING:
-        inRTL = (customMode == ApmPlane::RTL);
+        inRTL = (customMode == Plane::RTL);
         break;
     case MAV_TYPE_QUADROTOR:
     case MAV_TYPE_HEXAROTOR:
     case MAV_TYPE_OCTOROTOR:
     case MAV_TYPE_TRICOPTER:
     case MAV_TYPE_HELICOPTER:
-        inRTL = (customMode == ApmCopter::RTL);
+        inRTL = (customMode == Copter::RTL);
         break;
     case MAV_TYPE_GROUND_ROVER:
-        inRTL = (customMode == ApmRover::RTL);
+        inRTL = (customMode == Rover::RTL);
         break;
     default:
         inRTL = false;

@@ -1,98 +1,141 @@
-/*=====================================================================
+/*===================================================================
+APM_PLANNER Open Source Ground Control Station
 
-PIXHAWK Micro Air Vehicle Flying Robotics Toolkit
+(c) 2014 APM_PLANNER PROJECT <http://www.diydrones.com>
 
-(c) 2009, 2010 PIXHAWK PROJECT  <http://pixhawk.ethz.ch>
+This file is part of the APM_PLANNER project
 
-This file is part of the PIXHAWK project
-
-    PIXHAWK is free software: you can redistribute it and/or modify
+    APM_PLANNER is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    PIXHAWK is distributed in the hope that it will be useful,
+    APM_PLANNER is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with PIXHAWK. If not, see <http://www.gnu.org/licenses/>.
+    along with APM_PLANNER. If not, see <http://www.gnu.org/licenses/>.
 
 ======================================================================*/
 
 /**
  * @file
- *   @brief Manage communication links
+ *   @brief LinkManager
  *
- *   @author Lorenz Meier <mavteam@student.ethz.ch>
+ *   @author Michael Carpenter <malcom2073@gmail.com>
+ *   @author QGROUNDCONTROL PROJECT - This code has GPLv3+ snippets from QGROUNDCONTROL, (c) 2009, 2010 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
  *
  */
 
-#ifndef _LINKMANAGER_H_
-#define _LINKMANAGER_H_
+#ifndef LINKMANAGER_H
+#define LINKMANAGER_H
 
-#include <QThread>
-#include <QList>
-#include <QMultiMap>
-#include <LinkInterface.h>
-#include <ProtocolInterface.h>
-
+#include <QObject>
 /**
- * The Link Manager organizes the physical Links. It can manage arbitrary
- * links and takes care of connecting them as well assigning the correct
- * protocol instance to transport the link data into the application.
- *
- **/
+ * @brief The ConnectionManager class
+ * This class handles all connections between the GCS and the actual hardware.
+ * It will create (on request) serial or UDP links, connect the links to the associated mavlink parsers,
+ * and emit signals upwards when mavlink messages come in.
+ * This class lives in the UI thread
+ * The Serial Link lives in the UI Thread
+ * The mavlink decoder lives in its own thread
+ * the UAS Class lives in the UI thread
+ */
+#include "MAVLinkDecoder.h"
+#include "MAVLinkProtocol.h"
+//#include "MAVLinkProtocol.h"
+#include <QMap>
+#include "UASInterface.h"
+#include "UAS.h"
+#include "UASObject.h"
 class LinkManager : public QObject
 {
     Q_OBJECT
-
 public:
+    explicit LinkManager(QObject *parent = 0);
     static LinkManager* instance();
     ~LinkManager();
 
-    void run();
+    void disableTimeouts(int index);
+    void enableTimeouts(int index);
+    void disableAllTimeouts();
+    void enableAllTimeouts();
 
-    QList<LinkInterface*> getLinksForProtocol(ProtocolInterface* protocol);
+    MAVLinkProtocol* getProtocol() const;
+    bool connectLink(int index);
+    void disconnectLink(int index);
 
-    /** @brief Get the link for this id */
-    LinkInterface* getLinkForId(int id);
+    UASInterface* getUas(int id);
+    UASInterface* createUAS(MAVLinkProtocol* mavlink, LinkInterface* link, int sysid, mavlink_heartbeat_t* heartbeat, QObject* parent=NULL);
 
-    /** @brief Get a list of all links */
-    const QList<LinkInterface*> getLinks();
+    void addLink(LinkInterface *link);
+    QList<int> getLinks();
 
-    /** @brief Get a list of all protocols */
-    const QList<ProtocolInterface*> getProtocols() {
-        return protocolLinks.uniqueKeys();
-    }
+    LinkInterface* getLink(int linkId);
+    // Remove a link based on instance
+    void removeLink(LinkInterface *link);
+    // Remove a link based on unique id
+    void removeLink(int linkId);
 
-public slots:
+    LinkInterface::LinkType getLinkType(int linkid);
+    bool getLinkConnected(int linkid);
 
-    void add(LinkInterface* link);
-    void addProtocol(LinkInterface* link, ProtocolInterface* protocol);
+    QString getSerialLinkPort(int linkid); // [TODO] remove
+    QString getLinkName(int linkid); // [TODO] remove
+    QString getLinkShortName(int linkid); // [TODO] remove
+    QString getLinkDetail(int linkid); // [TODO] remove
+    int getSerialLinkBaud(int linkid); // [TODO] remove
 
-    void removeObj(QObject* obj);
-    bool removeLink(LinkInterface* link);
+    QList<QString> getCurrentPorts();
+    void stopLogging();
+    void startLogging();
+    void setLogSubDirectory(QString dir);
+    bool loggingEnabled();
+    UASObject *getUasObject(int uasid);
+    QMap<int,UASObject*> m_uasObjectMap; // [TODO] make private
 
-    bool connectAll();
-    bool connectLink(LinkInterface* link);
-
-    bool disconnectAll();
-    bool disconnectLink(LinkInterface* link);
-
-protected:
-    LinkManager();
-    QList<LinkInterface*> links;
-    QMultiMap<ProtocolInterface*,LinkInterface*> protocolLinks;
-
-private:
-    static LinkManager* _instance;
+    void addSimObject(uint8_t sysid,UASObject *obj); // [TODO] remove
+    void removeSimObject(uint8_t sysid); // [TODO] remove
 
 signals:
-    void newLink(LinkInterface* link);
-    void linkRemoved(LinkInterface* link);
+    //void newLink(LinkInterface* link);
+    void newLink(int linkid);
+    void protocolStatusMessage(QString title,QString text);
+    void linkChanged(int linkid);
 
+    /** @brief aggregated signal for when link status changes */
+    void linkChanged(LinkInterface *link);
+
+    void linkError(int linkid, QString message);
+    void messageReceived(LinkInterface* link,mavlink_message_t message);
+
+public slots:
+    void receiveMessage(LinkInterface* link,mavlink_message_t message);
+    void protocolStatusMessageRec(QString title,QString text);
+    void enableLogging(bool enabled);
+    void reloadSettings();
+    void linkUpdated(LinkInterface* link);
+
+private slots:
+    void linkConnected(LinkInterface* link);
+    void linkDisonnected(LinkInterface* link);
+    void linkErrorRec(LinkInterface* link,QString error);
+    void linkTimeoutTriggered(LinkInterface*);
+
+private:
+    void loadSettings();
+    void saveSettings();
+
+private:
+    QMap<int,LinkInterface*> m_connectionMap;
+    QMap<int,UASInterface*> m_uasMap;
+    QMap<QString,int> m_portToBaudMap;
+    MAVLinkDecoder *m_mavlinkDecoder;
+    MAVLinkProtocol *m_mavlinkProtocol;
+    QString m_logSubDir;
+    bool m_mavlinkLoggingEnabled;
 };
 
-#endif // _LINKMANAGER_H_
+#endif // LINKMANAGER_H

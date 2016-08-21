@@ -3,10 +3,6 @@
 #
 
 LinuxBuild {
-	INCLUDEPATH += \
-        /usr/include \
-        /usr/local/include
-
 	LIBS += \
 		-L/usr/lib
 
@@ -87,8 +83,10 @@ exists(user_config.pri) {
 INCLUDEPATH += $$MAVLINKPATH
 isEmpty(MAVLINK_CONF) {
     INCLUDEPATH += $$MAVLINKPATH/common
+message("Using mavlink common")
 } else {
     INCLUDEPATH += $$MAVLINKPATH/$$MAVLINK_CONF
+message("Using mavlink " + $$MAVLINK_CONF)
     DEFINES += $$sprintf('QGC_USE_%1_MESSAGES', $$upper($$MAVLINK_CONF))
 }
 
@@ -104,36 +102,38 @@ INCLUDEPATH += \
     src/apps/mavlinkgen/ui \
     src/apps/mavlinkgen/generator
 
-include(src/apps/mavlinkgen/mavlinkgen.pri)
+#include(src/apps/mavlinkgen/mavlinkgen.pri)
 
 #
 # OpenSceneGraph
 #
 
-MacBuild {
-    # GLUT and OpenSceneGraph are part of standard install on Mac
-	CONFIG += OSGDependency
+#Remove OSG support, as it's only valid for Qt4, not Qt5
+#MacBuild {
+#    # GLUT and OpenSceneGraph are part of standard install on Mac
+#	CONFIG += OSGDependency
 
-    INCLUDEPATH += \
-        $$BASEDIR/libs/lib/mac64/include
+#    INCLUDEPATH += \
+#        $$BASEDIR/libs/lib/mac64/include
 
-	LIBS += \
-        -L$$BASEDIR/libs/lib/mac64/lib \
-        -losgWidget
-}
+#	LIBS += \
+#        -L$$BASEDIR/libs/lib/mac64/lib \
+#        -losgWidget
+#}
 
-LinuxBuild {
-	exists(/usr/include/osg) | exists(/usr/local/include/osg) {
-        CONFIG += OSGDependency
-        exists(/usr/include/osg/osgQt) | exists(/usr/include/osgQt) | exists(/usr/local/include/osg/osgQt) | exists(/usr/local/include/osgQt) {
-            message("Including support for Linux OpenSceneGraph Qt")
-            LIBS += -losgQt
-            DEFINES += QGC_OSG_QT_ENABLED
-        } else {
-            message("Skipping support for Linux OpenSceneGraph Qt")
-        }
-	}
-}
+#Remove OSG support, as it's only valid for Qt4, not Qt5
+#LinuxBuild {
+#	exists(/usr/include/osg) | exists(/usr/local/include/osg) {
+#        CONFIG += OSGDependency
+#        exists(/usr/include/osg/osgQt) | exists(/usr/include/osgQt) | exists(/usr/local/include/osg/osgQt) | exists(/usr/local/include/osgQt) {
+#            message("Including support for Linux OpenSceneGraph Qt")
+#            LIBS += -losgQt
+#            DEFINES += QGC_OSG_QT_ENABLED
+#        } else {
+#            message("Skipping support for Linux OpenSceneGraph Qt")
+#        }
+#	}
+#}
 
 WindowsBuild {
 	exists($$BASEDIR/libs/lib/osg123) {
@@ -151,7 +151,7 @@ OSGDependency {
     message("Including support for OpenSceneGraph")
 
 	DEFINES += QGC_OSG_ENABLED
-    
+
     LIBS += \
         -losg \
         -losgViewer \
@@ -183,7 +183,7 @@ OSGDependency {
         src/ui/map3D/WaypointGroupNode.h \
         src/ui/map3D/TerrainParamDialog.h \
         src/ui/map3D/ImageryParamDialog.h
-        
+
     SOURCES += \
         src/ui/map3D/gpl.cc \
         src/ui/map3D/CameraParams.cc \
@@ -279,22 +279,15 @@ MacBuild | LinuxBuild {
 }
 
 #
-# EIGEN matrix library (NOMINMAX needed to make internal min/max work)
-#
-
-INCLUDEPATH += libs/eigen
-DEFINES += NOMINMAX
-
-#
 # AGLLIB math library
 #
 include(libs/alglib/alglib.pri)
-
+DEFINES += NOMINMAX
 #
 # OPMapControl library (from OpenPilot)
 #
 
-include(libs/utils/utils_external.pri)
+#include(libs/utils/utils_external.pri)
 include(libs/opmapcontrol/opmapcontrol_external.pri)
 
 DEPENDPATH += \
@@ -308,17 +301,6 @@ INCLUDEPATH += \
     libs/utils \
     libs \
     libs/opmapcontrol
-
-#
-# QWT plotting library
-#
-
-include(libs/qwt/qwt.pri)
-
-#
-# QSerialPort - serial port library
-#
-include(libs/serialport/apmserial.pri)
 
 WindowsBuild {
     # Used to enumerate serial ports by QSerialPort
@@ -368,23 +350,30 @@ WindowsBuild {
 }
 
 #
-# 3DConnexion 3d Mice support
+# [OPTIONAL] Magellan 3DxWare library. Provides support for 3DConnexion's 3D mice.
 #
+contains(DEFINES, DISABLE_3DMOUSE) {
+    message("Skipping support for Magellan 3DxWare (manual override from command line)")
+    DEFINES -= DISABLE_3DMOUSE
+# Otherwise the user can still disable this feature in the user_config.pri file.
+} else:exists(user_config.pri):infile(user_config.pri, DEFINES, DISABLE_3DMOUSE) {
+    message("Skipping support for 3DConnexion mice (manual override from user_config.pri)")
+} else:LinuxBuild {
+    exists(/usr/local/lib/libxdrvlib.so) {
+        message("Including support for Magellan 3DxWare")
 
-LinuxBuild : exists(/usr/local/lib/libxdrvlib.so) {
-    message("Including support for Magellan 3DxWare")
+        DEFINES += MOUSE_ENABLED_LINUX
+        DEFINES += ParameterCheck
+        # Hack: Has to be defined for magellan usage
 
-    DEFINES +=
-        MOUSE_ENABLED_LINUX \
-        ParameterCheck # Hack: Has to be defined for magellan usage
-
-    INCLUDEPATH *= /usr/local/include
-    HEADERS += src/input/Mouse6dofInput.h
-    SOURCES += src/input/Mouse6dofInput.cpp
-    LIBS += -L/usr/local/lib/ -lxdrvlib
-}
-
-WindowsBuild {
+        INCLUDEPATH *= /usr/local/include
+        HEADERS += src/input/Mouse6dofInput.h
+        SOURCES += src/input/Mouse6dofInput.cpp
+        LIBS += -L/usr/local/lib/ -lxdrvlib
+    } else {
+        warning("Skipping support for Magellan 3DxWare (missing libraries, see README)")
+    }
+} else:WindowsBuild {
     message("Including support for Magellan 3DxWare")
 
     DEFINES += MOUSE_ENABLED_WIN
@@ -401,6 +390,8 @@ WindowsBuild {
         libs/thirdParty/3DMouse/win/MouseParameters.cpp \
         libs/thirdParty/3DMouse/win/Mouse3DInput.cpp \
         src/input/Mouse6dofInput.cpp
+} else {
+    message("Skipping support for Magellan 3DxWare (unsupported platform)")
 }
 
 #
@@ -412,7 +403,7 @@ WindowsBuild : win32 : exists(src/lib/opalrt/OpalApi.h) : exists(C:/OPAL-RT/RT-L
 
     DEFINES += OPAL_RT
 
-    INCLUDEPATH += 
+    INCLUDEPATH +=
         src/lib/opalrt
         libs/lib/opal/include \
 
@@ -447,47 +438,58 @@ WindowsBuild : win32 : exists(src/lib/opalrt/OpalApi.h) : exists(C:/OPAL-RT/RT-L
 
 MacBuild {
     INCLUDEPATH += \
-        $$BASEDIR/libs/lib/Frameworks/SDL.framework/Headers
+        $$BASEDIR/libs/lib/Frameworks/SDL2.framework/Headers
 
     LIBS += \
         -F$$BASEDIR/libs/lib/Frameworks \
-        -framework SDL
+        -framework SDL2
 }
 
 LinuxBuild {
 	LIBS += \
-		-lSDL \
-		-lSDLmain
+            -lSDL2
 }
 
-WindowsBuild {
-	INCLUDEPATH += \
+WindowsBuild{
+    INCLUDEPATH += \
         $$BASEDIR/libs/lib/sdl/msvc/include \
 
-	LIBS += \
-        -L$$BASEDIR/libs/lib/sdl/msvc/lib \
-        -lSDLmain \
-        -lSDL
+    contains(QT_ARCH, i386) {
+        LIBS += \
+            -L$$BASEDIR/libs/lib/sdl/msvc/lib/x86 \
+            -lSDL2main \
+            -lSDL2
+    }else {
+        LIBS += \
+            -L$$BASEDIR/libs/lib/sdl/msvc/lib/x64 \
+            -lSDL2main \
+            -lSDL2
+    }
 }
 
 WindowsCrossBuild {
-        INCLUDEPATH += \
+    INCLUDEPATH += \
         $$BASEDIR/libs/lib/sdl/include \
 
-        LIBS += \
-        -Llibs/lib/sdl/win32 \
-        -lSDL.dll
+    LIBS += \
+        -L$$BASEDIR/libs/lib/sdl/win32 \
+        -lSDL2
 }
 
 #
 # Festival Lite speech synthesis engine
 #
 
-LinuxBuild {
-	LIBS += \
-		-lflite_cmu_us_kal \
-		-lflite_usenglish \
-		-lflite_cmulex \
-		-lflite
+LinuxBuild{
+    exists(/usr/include/flite/flite.h){
+        LIBS += \
+            -lflite_cmu_us_kal \
+            -lflite_usenglish \
+            -lflite_cmulex \
+            -lflite
+    } else {
+        message(Skipping Flite Support)
+        DEFINES -= FLITE_AUDIO_ENABLED
+    }
 }
 

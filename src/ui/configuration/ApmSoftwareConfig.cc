@@ -21,18 +21,19 @@ This file is part of the APM_PLANNER project
 ======================================================================*/
 
 #include "ApmSoftwareConfig.h"
-#include "QsLog.h"
+#include "logging.h"
 #include <QXmlStreamReader>
 #include <QDir>
 #include <QFile>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
 #include <QSettings>
+#include <QMessageBox>
+
+static const int MAX_REDIRECT_COUNT = 2;
 
 ApmSoftwareConfig::ApmSoftwareConfig(QWidget *parent) : QWidget(parent),
     m_paramDownloadState(none),
-    m_paramDownloadCount(0)
+    m_paramDownloadCount(0),
+    m_redirectCount(0)
 {
     m_uas=0;
     ui.setupUi(this);
@@ -80,11 +81,6 @@ ApmSoftwareConfig::ApmSoftwareConfig(QWidget *parent) : QWidget(parent),
     m_buttonToConfigWidgetMap[ui.basicPidButton] = m_basicPidConfig;
     connect(ui.basicPidButton,SIGNAL(clicked()),this,SLOT(activateStackedWidget()));
 
-    m_arduCopterPidConfig = new ArduCopterPidConfig(this);
-    ui.stackedWidget->addWidget(m_arduCopterPidConfig);
-    m_buttonToConfigWidgetMap[ui.arduCopterPidButton] = m_arduCopterPidConfig;
-    connect(ui.arduCopterPidButton,SIGNAL(clicked()),this,SLOT(activateStackedWidget()));
-
     m_arduPlanePidConfig = new ArduPlanePidConfig(this);
     ui.stackedWidget->addWidget(m_arduPlanePidConfig);
     m_buttonToConfigWidgetMap[ui.arduPlanePidButton] = m_arduPlanePidConfig;
@@ -101,12 +97,14 @@ ApmSoftwareConfig::ApmSoftwareConfig(QWidget *parent) : QWidget(parent),
     connect(ui.plannerConfigButton,SIGNAL(clicked()),this,SLOT(activateStackedWidget()));
     ui.stackedWidget->setCurrentWidget(m_buttonToConfigWidgetMap[ui.plannerConfigButton]);
 
+    connect(ui.arduCopterPidButton, SIGNAL(clicked()), this, SLOT(updateUAS()));
+
     connect(UASManager::instance(),SIGNAL(activeUASSet(UASInterface*)),this,SLOT(activeUASSet(UASInterface*)));
     activeUASSet(UASManager::instance()->getActiveUAS());
 
-    QNetworkAccessManager *man = new QNetworkAccessManager(this);
-    QNetworkReply *reply = man->get(QNetworkRequest(QUrl("http://autotest.diydrones.com/Parameters/apm.pdef.xml")));
-    connect(reply,SIGNAL(finished()),this,SLOT(apmParamNetworkReplyFinished()));
+    m_url = QUrl("http://autotest.ardupilot.org/Parameters/apm.pdef.xml");
+    m_networkReply = m_networkAccessManager.get(QNetworkRequest(m_url));
+    connect(m_networkReply,SIGNAL(finished()),this,SLOT(apmParamNetworkReplyFinished()));
 
     // Setup Parameter Progress bars
     ui.globalParamProgressBar->setRange(0,100);
@@ -133,18 +131,50 @@ void ApmSoftwareConfig::advModeChanged(bool state)
 void ApmSoftwareConfig::apmParamNetworkReplyFinished()
 {
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
-    if (!reply)
-    {
+    if (!reply) {
         return;
     }
-    QByteArray apmpdef = reply->readAll();
-    m_apmPdefFilename = QDir(QGC::appDataDirectory()).filePath("apm.pdef.xml");
-    QFile file(m_apmPdefFilename);
-    file.open(QIODevice::ReadWrite | QIODevice::Truncate);
-    file.write(apmpdef);
-    file.flush();
-    file.close();
 
+    QVariant redirectionTarget = reply->attribute(QNetworkRequest::RedirectionTargetAttribute);
+
+    if (reply->error()) {
+        //Error condition, don't attempt to rewrite the file
+        QLOG_ERROR() << "ApmSoftwareConfig::apmParamNetworkReplyFinished()" << "Unable to retrieve pdef.xml file! Error num:" << reply->error() << ":" << reply->errorString();
+        return;
+
+    } else if (!redirectionTarget.isNull()) {
+        QUrl newUrl = m_url.resolved(redirectionTarget.toUrl());
+        m_redirectCount++;
+        if ( m_redirectCount >= MAX_REDIRECT_COUNT ) {
+            // Pormpt user is more than 2 redirects to avoid circular endless reidrects blowing up
+            if (QMessageBox::question(this, tr("HTTP"),
+                                        tr("Redirect to %1 ?").arg(newUrl.toString()),
+                                        QMessageBox::Yes | QMessageBox::No) == QMessageBox::No) {
+                QLOG_WARN() << "Stop redirection at user request";
+                return;
+            }
+        }
+        m_url = newUrl;
+        m_networkReply->deleteLater();
+        m_networkReply = NULL;
+        m_networkReply = m_networkAccessManager.get(QNetworkRequest(m_url));
+        connect(m_networkReply, SIGNAL(finished()), this, SLOT(apmParamNetworkReplyFinished()));
+        return;
+
+    } else {
+        QByteArray apmpdef = reply->readAll();
+        m_apmPdefFilename = QDir(QGC::appDataDirectory()).filePath("apm.pdef.xml");
+        QFile file(m_apmPdefFilename);
+        if (!file.open(QIODevice::ReadWrite | QIODevice::Truncate)) {
+            QLOG_ERROR() << "ApmSoftwareConfig::apmParamNetworkReplyFinished()" << "Unable to open" << file.fileName() << "for writing";
+            return;
+        }
+        file.write(apmpdef);
+        file.flush();
+        file.close();
+    }
+    m_networkReply->deleteLater();
+    m_networkReply = NULL;
 }
 
 ApmSoftwareConfig::~ApmSoftwareConfig()
@@ -222,6 +252,10 @@ void ApmSoftwareConfig::activeUASSet(UASInterface *uas)
     }
     if (!uas)
     {
+        if (m_populateTimer.isActive())
+        {
+            m_populateTimer.stop();
+        }
         return;
     }
     m_uas = uas;
@@ -490,6 +524,25 @@ void ApmSoftwareConfig::populateTimerTick()
         m_populateTimer.stop();
         m_advancedParamConfig->allParamsAdded();
         m_standardParamConfig->allParamsAdded();
+        if (m_uas)
+        {
+            //Set all the new parameters to their proper values.
+            //By the time this is hit, the param manager already has a full set of parameters from the vehicle,
+            //no need to re-request them.
+            QList<QString> paramnames = m_uas->getParamManager()->getParameterNames(1);
+            if (paramnames.size() == 0)
+            {
+                //No param names, params are likely not yet done. Wait a second and refresh.
+                QLOG_DEBUG() << "ApmSoftwareConfig::populateTimerTick() - No Param names from param manager. Sleeping for one second...";
+                m_populateTimer.start(1000);
+                return;
+            }
+            for (int i=0;i<paramnames.size();i++)
+            {
+                m_advancedParamConfig->parameterChanged(m_uas->getUASID(),m_uas->getComponentId(),paramnames.at(i),m_uas->getParamManager()->getParameterValue(1,paramnames.at(i)));
+                m_standardParamConfig->parameterChanged(m_uas->getUASID(),m_uas->getComponentId(),paramnames.at(i),m_uas->getParamManager()->getParameterValue(1,paramnames.at(i)));
+            }
+        }
         return;
     }
     if (m_paramConfigList.at(0).isRange)
@@ -519,18 +572,10 @@ void ApmSoftwareConfig::populateTimerTick()
 
 }
 
-void ApmSoftwareConfig::writeParameter(int component, QString parameterName, QVariant value)
-{
-    QLOG_DEBUG() << "ASC writeParameter";
-}
-
-void ApmSoftwareConfig::readParameter(int component, QString parameterName, QVariant value)
-{
-    QLOG_DEBUG() << "ASC readParameter";
-}
-
 void ApmSoftwareConfig::parameterChanged(int uas, int component, int parameterCount, int parameterId, QString parameterName, QVariant value)
 {
+    Q_UNUSED(component)
+
     QString countString;
     // Create progress of downloading all parameters for UI
     switch (m_paramDownloadState){
@@ -552,7 +597,7 @@ void ApmSoftwareConfig::parameterChanged(int uas, int component, int parameterCo
 
         countString = QString::number(m_paramDownloadCount) + "/"
                         + QString::number(parameterCount);
-        QLOG_INFO() << "Global Param Progress Bar: " << countString
+        QLOG_TRACE() << "Global Param Progress Bar: " << countString
                      << "paramId:" << parameterId << "name:" << parameterName
                      << "paramValue:" << value;
         ui.globalParamProgressLabel->setText(countString);
@@ -565,7 +610,7 @@ void ApmSoftwareConfig::parameterChanged(int uas, int component, int parameterCo
         m_paramDownloadCount++;
         countString = QString::number(m_paramDownloadCount) + "/"
                         + QString::number(parameterCount);
-        QLOG_INFO() << "Param Progress Bar: " << countString
+        QLOG_TRACE() << "Param Progress Bar: " << countString
                      << "paramId:" << parameterId << "name:" << parameterName
                      << "paramValue:" << value;
         ui.globalParamProgressLabel->setText(countString);
@@ -587,3 +632,49 @@ void ApmSoftwareConfig::parameterChanged(int uas, int component, int parameterCo
     }
 }
 
+void ApmSoftwareConfig::updateUAS()
+{
+    reloadView();
+}
+
+void ApmSoftwareConfig::reloadView()
+{
+    if (m_uas){
+        // Detects if we are using new copter PIDS or old ones
+        QVariant returnValue;
+        if (m_uas->getParamManager()->getParameterValue(1, QString("POS_XY_P"), returnValue)){
+            // Use New Copter PID UI
+            if (m_arduCopterPidConfig){
+                QLOG_DEBUG() << "Destroy Ext Tuning (m_arduCopterPidConfig)";
+                ui.stackedWidget->removeWidget(m_arduCopterPidConfig);
+                delete m_arduCopterPidConfig;
+            }
+            if (m_copterPidConfig.isNull()){
+                QLOG_DEBUG() << "Create Ext Tuning (m_copterPidConfig)";
+                m_copterPidConfig = new CopterPidConfig(this);
+                ui.stackedWidget->addWidget(m_copterPidConfig);
+                m_buttonToConfigWidgetMap[ui.arduCopterPidButton] = m_copterPidConfig;
+                connect(ui.arduCopterPidButton,SIGNAL(clicked()),this,SLOT(activateStackedWidget()));
+                activateStackedWidget();
+                QTimer::singleShot(100,m_copterPidConfig, SLOT(refreshButtonClicked()));
+            }
+
+        } else if (m_uas->getParamManager()->getParameterValue(1, "HLD_LAT_P", returnValue)){
+            // Use old ArduCopter PID UI,
+            if (m_copterPidConfig){
+                QLOG_DEBUG() << "Destroy Ext Tuning (m_copterPidConfig)";
+                ui.stackedWidget->removeWidget(m_copterPidConfig);
+                delete m_copterPidConfig;
+            }
+            if (m_arduCopterPidConfig.isNull()){
+                QLOG_DEBUG() << "Create Ext Tuning (m_arduCopterPidConfig)";
+                m_arduCopterPidConfig = new ArduCopterPidConfig(this);
+                ui.stackedWidget->addWidget(m_arduCopterPidConfig);
+                m_buttonToConfigWidgetMap[ui.arduCopterPidButton] = m_arduCopterPidConfig;
+                connect(ui.arduCopterPidButton,SIGNAL(clicked()),this,SLOT(activateStackedWidget()));
+                activateStackedWidget();
+                QTimer::singleShot(100,m_arduCopterPidConfig, SLOT(refreshButtonClicked()));
+            }
+        }
+    }
+}

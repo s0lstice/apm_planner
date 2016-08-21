@@ -14,7 +14,7 @@
 //    (c) 2013 Author: Bill Bonney <billbonney@communistech.com>
 //
 
-import QtQuick 1.1
+import QtQuick 2.0
 import "./components"
 
 
@@ -25,14 +25,16 @@ Rectangle {
     property int linkDeviceSize: 100
 
     property alias backgroundColor : toolbar.color
+    property alias uasNameLabel: currentUasName.label
     property alias linkNameLabel: linkDevice.label
-    property alias baudrateLabel: baudrate.label
+    property alias linkDetailLabel: linkDetail.label
     property bool connected: false
     property bool armed: false
     property string armedstr: "status"
     property bool enableStatusDisplay: true
 
     property alias modeText: modeTextId.modeText
+
     property alias modeTextColor: modeTextId.modeTextColor
     property alias modeBkgColor: modeTextId.modeBackgroundColor
     property alias modeBorderColor: modeTextId.modeBorderColor
@@ -40,6 +42,8 @@ Rectangle {
     property alias heartbeat: heartbeatDisplayId.heartbeat
     property bool stopAnimation: false
     property alias disableConnectWidget: connectionWidget.disable
+
+    property bool donated: false
 
     function setArmed(armedState) {
         if (armedState) {
@@ -63,7 +67,27 @@ Rectangle {
     }
 
     function setAdvancedMode(state){
-        terminalView.visible = state
+        // Enable ro disable buttons based on Adv mode.
+        // ie. terminalView.visible = state
+        var donate = Settings.value("USER_DONATED", "false");
+        console.log("Set Advanced Mode " + state + " USER_DONATED:" + donate);
+        if (donate === true){
+            console.log("Donate invisible");
+            donateView.visible = false;
+        } else {
+            console.log("Donate visible");
+            donateView.visible = true;
+        }
+    }
+
+    function clearHighlightedButtons(){
+        console.log("APMToolBar: clear selected buttons")
+        flightDataView.setUnselected()
+        flightPlanView.setUnselected()
+        initialSetupView.setUnselected()
+        configTuningView.setUnselected()
+        plotView.setUnselected()
+        donateView.setUnselected()
     }
 
     width: toolbar.width
@@ -101,21 +125,6 @@ Rectangle {
         }
     }
 
-// [BB] The code below should work, not sure why. replaced with code above
-//    Connections {
-//            target: globalObj
-//            onMAVConnected: {
-//                console.log("QML Change Connection " + connected)
-//                if (connected){
-//                    console.log("connected")
-//                    connectButton.image = "./resources/apmplanner/toolbar/disconnect.png"
-//                } else {
-//                    console.log("disconnected")
-//                    connectButton.image = "./resources/apmplanner/toolbar/connect.png"
-//                }
-//            }
-//    }
-
     Row {
         anchors.left: parent.left
         spacing: rowSpacerSize
@@ -130,8 +139,11 @@ Rectangle {
             id: flightDataView
             label: "FLIGHT DATA"
             image: "./resources/apmplanner/toolbar/flightdata.png"
+            selected: true
             onClicked: {
+                clearHighlightedButtons()
                 globalObj.triggerFlightView()
+                setSelected()
             }
         }
 
@@ -139,7 +151,11 @@ Rectangle {
             id: flightPlanView
             label: "FLIGHT PLAN"
             image: "./resources/apmplanner/toolbar/flightplanner.png"
-            onClicked: globalObj.triggerFlightPlanView()
+            onClicked: {
+                clearHighlightedButtons()
+                globalObj.triggerFlightPlanView()
+                setSelected()
+            }
         }
 
         Button {
@@ -147,7 +163,11 @@ Rectangle {
             label: "INITIAL SETUP"
             image: "./resources/apmplanner/toolbar/light_initialsetup_icon.png"
 //            margins: 8
-            onClicked: globalObj.triggerInitialSetupView()
+            onClicked: {
+                clearHighlightedButtons()
+                globalObj.triggerInitialSetupView()
+                setSelected()
+            }
         }
 
         Button {
@@ -155,14 +175,47 @@ Rectangle {
             label: "CONFIG/TUNING"
             image: "./resources/apmplanner/toolbar/light_tuningconfig_icon.png"
 //            margins: 8
-            onClicked: globalObj.triggerConfigTuningView()
+            onClicked: {
+                clearHighlightedButtons()
+                globalObj.triggerConfigTuningView()
+                setSelected()
+            }
         }
 
         Button {
             id: plotView
             label: "GRAPHS"
             image: "./resources/apmplanner/toolbar/simulation.png"
-            onClicked: globalObj.triggerPlotView()
+            onClicked: {
+                clearHighlightedButtons()
+                globalObj.triggerPlotView()
+                setSelected()
+            }
+        }
+
+        Button {
+            id: donateView
+            label: "DONATE"
+            image: "./resources/apmplanner/toolbar/flightdata.png"
+            onClicked: {
+                clearHighlightedButtons()
+                globalObj.triggerDonateView()
+                setSelected()
+                donateHideTimer.start()
+            }
+
+            Timer {
+                id: donateHideTimer
+                running: false
+                interval: 500
+                onTriggered: {
+                    var donated = Settings.value("USER_DONATED", "false");
+                    if (donated === 'true'){
+                        donateView.visible = false;
+                        console.log("remove donated button")
+                    }
+                }
+            }
         }
 
 // [TODO] removed from toolbar until we have simulation working
@@ -172,14 +225,6 @@ Rectangle {
 //            image: "./resources/apmplanner/toolbar/simulation.png"
 //            onClicked: globalObj.triggerSimulationView()
 //        }
-
-        Button {
-            id: terminalView
-            label: "TERMINAL"
-            image: "./resources/apmplanner/toolbar/terminal.png"
-            onClicked: globalObj.triggerTerminalView()
-            visible: false
-        }
 
         Rectangle { // Spacer
             id: statusSpacerId
@@ -222,6 +267,7 @@ Rectangle {
             stopAnimation: stopAnimation
         }
 
+
 //            DigitalDisplay { // Information Pane
 //                title: "Speed"
 //                textValue: "11.0m/s"
@@ -259,24 +305,34 @@ Rectangle {
 
         onDisableChanged:{
             if(disable){
-                visible = false;
+                opacity = 0.5;
             } else {
-                visible = true;
+                opacity = 1.0;
             }
+        }
+
+        TextButton {
+            id: currentUasName
+            label: "MAV ID"
+            enabled: !connectionWidget.disable
+
+            onClicked: globalObj.showConnectionDialog()
         }
 
         TextButton {
             id: linkDevice
             label: "none"
             minWidth: linkDeviceSize
+            enabled: !connectionWidget.disable
 
             onClicked: globalObj.showConnectionDialog()
         }
 
         TextButton {
-            id: baudrate
+            id: linkDetail
             label: "none"
             minWidth: 70
+            enabled: !connectionWidget.disable
 
             onClicked: globalObj.showConnectionDialog()
         }
@@ -291,7 +347,12 @@ Rectangle {
             id: connectButton
             label: "CONNECT"
             image: "./resources/apmplanner/toolbar/connect.png"
-            onClicked: globalObj.connectMAV()
+            enabled: !connectionWidget.disable
+
+            onClicked: {
+                globalObj.connectMAV()
+                setUnselected()
+            }
         }
 
         Rectangle { // Spacer

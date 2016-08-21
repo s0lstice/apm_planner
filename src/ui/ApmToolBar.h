@@ -32,17 +32,17 @@ This file is part of the APM_PLANNER project
 #define APMTOOLBAR_H
 
 #include "UASInterface.h"
+#include "Settings.h"
 #include <QAction>
-#include <QDeclarativeView>
+#include <QQuickView>
 
-class LinkInterface;
 class QTimer;
 
-class APMToolBar : public QDeclarativeView
+class APMToolBar : public QQuickView
 {
     Q_OBJECT
 public:
-    explicit APMToolBar(QWidget *parent = 0);
+    explicit APMToolBar(QWindow *parent = 0);
     ~APMToolBar();
 
     void setFlightViewAction(QAction *action);
@@ -50,8 +50,8 @@ public:
     void setInitialSetupViewAction(QAction *action);
     void setConfigTuningViewAction(QAction *action);
     void setPlotViewAction(QAction *action);
+    void setDonateViewAction(QAction *action);
     void setSimulationViewAction(QAction *action);
-    void setTerminalViewAction(QAction *action);
     void setConnectMAVAction(QAction *action);
     
     void setModeText(const QString &text);
@@ -62,7 +62,7 @@ signals:
     void triggerConfigTuningView();
     void triggerSimulationView();
     void triggerPlotView();
-    void triggerTerminalView();
+    void triggerDonateView();
 
     void MAVConnected(bool connected);
 
@@ -72,23 +72,21 @@ public slots:
     void selectInitialSetupView();
     void selectConfigTuningView();
     void selectSimulationView();
+    void selectDonateView();
     void selectPlotView();
-    void selectTerminalView();
 
     void checkAdvancedMode(bool checked);
 
     void connectMAV();
     void showConnectionDialog();
     void setConnection(bool connection);
-    void connected(LinkInterface *linkInterface);
-    void disconnected(LinkInterface *linkInterface);
 
     void activeUasSet(UASInterface *uas);
     void armingChanged(int sysId, QString armingState);
     void armingChanged(bool armed);
 
-    void updateLinkDisplay(LinkInterface *link);
-    void newLinkCreated(LinkInterface* newLink);
+    void updateLinkDisplay(int linkid);
+    void newLinkCreated(int linkid);
 
     void navModeChanged(int uasid, int mode, const QString& text);
     void heartbeat(UASInterface* uas);
@@ -103,11 +101,14 @@ public slots:
     void parameterChanged(int uas, int component, int parameterCount,
                           int parameterId, QString parameterName, QVariant value);
 
+
 private:
     QPointer<UASInterface> m_uas;
+    Settings m_settings;
     QTimer m_heartbeatTimer;
-    QPointer<LinkInterface> m_currentLink;
     bool m_disableOverride;
+    int m_currentLinkId;
+    bool m_donated;
 };
 
 #endif // APMTOOLBAR_H

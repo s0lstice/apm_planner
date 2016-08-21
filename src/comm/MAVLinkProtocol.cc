@@ -1,179 +1,67 @@
 /*===================================================================
+APM_PLANNER Open Source Ground Control Station
+
+(c) 2014 APM_PLANNER PROJECT <http://www.diydrones.com>
+
+This file is part of the APM_PLANNER project
+
+    APM_PLANNER is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    APM_PLANNER is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with APM_PLANNER. If not, see <http://www.gnu.org/licenses/>.
+
 ======================================================================*/
 
 /**
  * @file
- *   @brief Implementation of class MAVLinkProtocol
- *   @author Lorenz Meier <mail@qgroundcontrol.org>
+ *   @brief MAVLinkProtocol
+ *          This class handles incoming mavlink_message_t packets.
+ *          It will create a UAS class if one does not exist for a particular heartbeat systemid
+ *          It will pass mavlink_message_t on to the UAS class for further parsing
+ *
+ *   @author Michael Carpenter <malcom2073@gmail.com>
+ *   @author QGROUNDCONTROL PROJECT - This code has GPLv3+ snippets from QGROUNDCONTROL, (c) 2009, 2010 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
  */
 
-#include "QsLog.h"
 
 #include "MAVLinkProtocol.h"
-#include "UASInterface.h"
-#include "UASManager.h"
-#include "UASInterface.h"
-#include "UAS.h"
-#include "SlugsMAV.h"
-#include "PxQuadMAV.h"
-#include "ArduPilotMegaMAV.h"
-#include "configuration.h"
 #include "LinkManager.h"
-#include "QGCMAVLink.h"
-#include "QGCMAVLinkUASFactory.h"
-#include "QGC.h"
 
-#include <inttypes.h>
-#include <iostream>
-
-
-#include <QTime>
-#include <QApplication>
-#include <QMessageBox>
-#include <QSettings>
-#include <QDesktopServices>
-#include <QDir>
-#include <QDataStream>
-
-
-#ifdef QGC_PROTOBUF_ENABLED
-#include <google/protobuf/descriptor.h>
-#endif
-
-
-/**
- * The default constructor will create a new MAVLink object sending heartbeats at
- * the MAVLINK_HEARTBEAT_DEFAULT_RATE to all connected links.
- */
-MAVLinkProtocol::MAVLinkProtocol() :
-    heartbeatTimer(new QTimer(this)),
-    heartbeatRate(MAVLINK_HEARTBEAT_DEFAULT_RATE),
-    m_heartbeatsEnabled(false),
-    m_multiplexingEnabled(false),
-    m_authEnabled(false),
+MAVLinkProtocol::MAVLinkProtocol():
+    m_isOnline(true),
     m_loggingEnabled(false),
     m_logfile(NULL),
-    m_enable_version_check(true),
-    m_paramRetransmissionTimeout(350),
-    m_paramRewriteTimeout(500),
-    m_paramGuardEnabled(true),
-    m_actionGuardEnabled(false),
-    m_actionRetransmissionTimeout(100),
-    versionMismatchIgnore(false),
-    systemId(QGC::defaultSystemId),
-    m_throwAwayGCSPackets(false)
+    m_connectionManager(NULL)
 {
-    m_authKey = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-    loadSettings();
-    //start(QThread::LowPriority);
-    // Start heartbeat timer, emitting a heartbeat at the configured rate
-    connect(heartbeatTimer, SIGNAL(timeout()), this, SLOT(sendHeartbeat()));
-    heartbeatTimer->start(1000/heartbeatRate);
-    totalReceiveCounter = 0;
-    totalLossCounter = 0;
-    currReceiveCounter = 0;
-    currLossCounter = 0;
-    for (int i = 0; i < 256; i++)
-    {
-        for (int j = 0; j < 256; j++)
-        {
-            lastIndex[i][j] = -1;
-        }
-    }
-
-    emit versionCheckChanged(m_enable_version_check);
-}
-void MAVLinkProtocol::throwAwayGCSPackets(bool throwaway)
-{
-    m_throwAwayGCSPackets = throwaway;
-}
-
-void MAVLinkProtocol::loadSettings()
-{
-    // Load defaults from settings
-    QSettings settings;
-    settings.sync();
-    settings.beginGroup("QGC_MAVLINK_PROTOCOL");
-    enableHeartbeats(settings.value("HEARTBEATS_ENABLED", m_heartbeatsEnabled).toBool());
-    enableVersionCheck(settings.value("VERSION_CHECK_ENABLED", m_enable_version_check).toBool());
-    enableMultiplexing(settings.value("MULTIPLEXING_ENABLED", m_multiplexingEnabled).toBool());
-
-    // Only set system id if it was valid
-    int temp = settings.value("GCS_SYSTEM_ID", systemId).toInt();
-    if (temp > 0 && temp < 256)
-    {
-        systemId = temp;
-    }
-
-    // Set auth key
-    m_authKey = settings.value("GCS_AUTH_KEY", m_authKey).toString();
-    enableAuth(settings.value("GCS_AUTH_ENABLED", m_authEnabled).toBool());
-
-    // Parameter interface settings
-    bool ok;
-    temp = settings.value("PARAMETER_RETRANSMISSION_TIMEOUT", m_paramRetransmissionTimeout).toInt(&ok);
-    if (ok) m_paramRetransmissionTimeout = temp;
-    temp = settings.value("PARAMETER_REWRITE_TIMEOUT", m_paramRewriteTimeout).toInt(&ok);
-    if (ok) m_paramRewriteTimeout = temp;
-    m_paramGuardEnabled = settings.value("PARAMETER_TRANSMISSION_GUARD_ENABLED", m_paramGuardEnabled).toBool();
-    settings.endGroup();
-}
-
-void MAVLinkProtocol::storeSettings()
-{
-    // Store settings
-    QSettings settings;
-    settings.beginGroup("QGC_MAVLINK_PROTOCOL");
-    settings.setValue("HEARTBEATS_ENABLED", m_heartbeatsEnabled);
-    settings.setValue("VERSION_CHECK_ENABLED", m_enable_version_check);
-    settings.setValue("MULTIPLEXING_ENABLED", m_multiplexingEnabled);
-    settings.setValue("GCS_SYSTEM_ID", systemId);
-    settings.setValue("GCS_AUTH_KEY", m_authKey);
-    settings.setValue("GCS_AUTH_ENABLED", m_authEnabled);
-
-    // Parameter interface settings
-    settings.setValue("PARAMETER_RETRANSMISSION_TIMEOUT", m_paramRetransmissionTimeout);
-    settings.setValue("PARAMETER_REWRITE_TIMEOUT", m_paramRewriteTimeout);
-    settings.setValue("PARAMETER_TRANSMISSION_GUARD_ENABLED", m_paramGuardEnabled);
-    settings.endGroup();
-    settings.sync();
-    QLOG_DEBUG() << "Storing settings!";
 }
 
 MAVLinkProtocol::~MAVLinkProtocol()
 {
-    storeSettings();
-    if (m_logfile)
-    {
-        stopLogging();
-    }
+    stopLogging();
+    m_connectionManager = NULL;
 }
 
-QString MAVLinkProtocol::getLogfileName()
+void MAVLinkProtocol::sendMessage(mavlink_message_t msg)
 {
-    if (m_logfile)
-    {
-        return m_logfile->fileName();
-    }
-    else
-    {
-        return QGC::MAVLinkLogDirectory() + QGC::fileNameAsTime();
-    }
+    Q_UNUSED(msg);
 }
 
-/**
- * The bytes are copied by calling the LinkInterface::readBytes() method.
- * This method parses all incoming bytes and constructs a MAVLink packet.
- * It can handle multiple links in parallel, as each link has it's own buffer/
- * parsing state machine.
- * @param link The interface to read from
- * @see LinkInterface
- **/
 void MAVLinkProtocol::receiveBytes(LinkInterface* link, QByteArray b)
 {
-//    receiveMutex.lock();
     mavlink_message_t message;
     mavlink_status_t status;
+
+    // Cache the link ID for common use.
+    int linkId = link->getId();
 
     static int mavlink09Count = 0;
     static int nonmavlinkCount = 0;
@@ -182,8 +70,9 @@ void MAVLinkProtocol::receiveBytes(LinkInterface* link, QByteArray b)
     static bool checkedUserNonMavlink = false;
     static bool warnedUserNonMavlink = false;
 
+    // FIXME: Add check for if link->getId() >= MAVLINK_COMM_NUM_BUFFERS
     for (int position = 0; position < b.size(); position++) {
-        unsigned int decodeState = mavlink_parse_char(link->getId(), (uint8_t)(b[position]), &message, &status);
+        unsigned int decodeState = mavlink_parse_char(linkId, (uint8_t)(b[position]), &message, &status);
 
         if ((uint8_t)b[position] == 0x55) mavlink09Count++;
         if ((mavlink09Count > 100) && !decodedFirstPacket && !warnedUser)
@@ -197,7 +86,7 @@ void MAVLinkProtocol::receiveBytes(LinkInterface* link, QByteArray b)
         if (decodeState == 0 && !decodedFirstPacket)
         {
             nonmavlinkCount++;
-            if (nonmavlinkCount > 500 && !warnedUserNonMavlink)
+            if (nonmavlinkCount > 2000 && !warnedUserNonMavlink)
             {
                 //500 bytes with no mavlink message. Are we connected to a mavlink capable device?
                 if (!checkedUserNonMavlink)
@@ -216,6 +105,20 @@ void MAVLinkProtocol::receiveBytes(LinkInterface* link, QByteArray b)
         if (decodeState == 1)
         {
             decodedFirstPacket = true;
+
+            if(message.msgid == MAVLINK_MSG_ID_PING)
+            {
+                // process ping requests (tgt_system and tgt_comp must be zero)
+                mavlink_ping_t ping;
+                mavlink_msg_ping_decode(&message, &ping);
+                if(!ping.target_system && !ping.target_component && m_isOnline)
+                {
+                    mavlink_message_t msg;
+                    mavlink_msg_ping_pack(getSystemId(), getComponentId(), &msg, ping.time_usec, ping.seq, message.sysid, message.compid);
+                    sendMessage(msg);
+                }
+            }
+
 #if defined(QGC_PROTOBUF_ENABLED)
 
             if (message.msgid == MAVLINK_MSG_ID_EXTENDED_MESSAGE)
@@ -318,322 +221,190 @@ void MAVLinkProtocol::receiveBytes(LinkInterface* link, QByteArray b)
                     stopLogging();
                 }
             }
-
-            // ORDER MATTERS HERE!
-            // If the matching UAS object does not yet exist, it has to be created
-            // before emitting the packetReceived signal
-
-            UASInterface* uas = UASManager::instance()->getUASForId(message.sysid);
-            //qDebug() << "MAVLinkProtocol::receiveBytes" << uas;
-
-            // Check and (if necessary) create UAS object
-            if (uas == NULL && message.msgid == MAVLINK_MSG_ID_HEARTBEAT)
+            quint64 time = QGC::groundTimeUsecs();
+            m_mavlinkMsgBuffer[time] = message;
+            if (m_isOnline)
             {
-                // ORDER MATTERS HERE!
-                // The UAS object has first to be created and connected,
-                // only then the rest of the application can be made aware
-                // of its existence, as it only then can send and receive
-                // it's first messages.
+                handleMessage(time,link);
+            }
+        }
+    }
+}
+void MAVLinkProtocol::handleMessage(quint64 timeid,LinkInterface *link)
+{
+    mavlink_message_t message = m_mavlinkMsgBuffer.value(timeid);
+    unsigned int linkId = link->getId();
+    // ORDER MATTERS HERE!
+    // If the matching UAS object does not yet exist, it has to be created
+    // before emitting the packetReceived signal
 
-                // Check if the UAS has the same id like this system
-                if (message.sysid == getSystemId())
-                {
-                    if (m_throwAwayGCSPackets)
-                    {
-                        //If replaying, we have to assume that it's just hearing ground control traffic
-                        return;
-                    }
-                    emit protocolStatusMessage(tr("SYSTEM ID CONFLICT!"), tr("Warning: A second system is using the same system id (%1)").arg(getSystemId()));
-                }
+    //UASInterface* uas = UASManager::instance()->getUASForId(message.sysid);
+    Q_ASSERT_X(m_connectionManager != NULL, "MAVLinkProtocol::receiveBytes", " error:m_connectionManager == NULL");
+    UASInterface* uas = m_connectionManager->getUas(message.sysid);
+    //qDebug() << "MAVLinkProtocol::receiveBytes" << uas;
 
-                // Create a new UAS based on the heartbeat received
-                // Todo dynamically load plugin at run-time for MAV
-                // WIKISEARCH:AUTOPILOT_TYPE_INSTANTIATION
+    // Check and (if necessary) create UAS object
+    if (uas == NULL && message.msgid == MAVLINK_MSG_ID_HEARTBEAT)
+    {
+        // ORDER MATTERS HERE!
+        // The UAS object has first to be created and connected,
+        // only then the rest of the application can be made aware
+        // of its existence, as it only then can send and receive
+        // it's first messages.
 
-                // First create new UAS object
-                // Decode heartbeat message
-                mavlink_heartbeat_t heartbeat;
-                // Reset version field to 0
-                heartbeat.mavlink_version = 0;
-                mavlink_msg_heartbeat_decode(&message, &heartbeat);
+        // Check if the UAS has the same id like this system
+        if (message.sysid == getSystemId())
+        {
+            if (m_throwAwayGCSPackets)
+            {
+                //If replaying, we have to assume that it's just hearing ground control traffic
+                return;
+            }
+            emit protocolStatusMessage(tr("SYSTEM ID CONFLICT!"), tr("Warning: A second system is using the same system id (%1)").arg(getSystemId()));
+        }
 
-                // Check if the UAS has a different protocol version
-                if (m_enable_version_check && (heartbeat.mavlink_version != MAVLINK_VERSION))
-                {
-                    // Bring up dialog to inform user
-                    if (!versionMismatchIgnore)
-                    {
-                        emit protocolStatusMessage(tr("The MAVLink protocol version on the MAV and APM Planner mismatch!"),
-                                                   tr("It is unsafe to use different MAVLink versions. APM Planner therefore refuses to connect to system %1, which sends MAVLink version %2 (APM Planner uses version %3).").arg(message.sysid).arg(heartbeat.mavlink_version).arg(MAVLINK_VERSION));
-                        versionMismatchIgnore = true;
-                    }
+        // Create a new UAS based on the heartbeat received
+        // Todo dynamically load plugin at run-time for MAV
+        // WIKISEARCH:AUTOPILOT_TYPE_INSTANTIATION
 
-                    // Ignore this message and continue gracefully
-                    continue;
-                }
+        // First create new UAS object
+        // Decode heartbeat message
+        mavlink_heartbeat_t heartbeat;
+        // Reset version field to 0
+        heartbeat.mavlink_version = 0;
+        mavlink_msg_heartbeat_decode(&message, &heartbeat);
 
-                // Create a new UAS object
-                uas = QGCMAVLinkUASFactory::createUAS(this, link, message.sysid, &heartbeat);
+        // Check if the UAS has a different protocol version
+        if (m_enable_version_check && (heartbeat.mavlink_version != MAVLINK_VERSION))
+        {
+            // Bring up dialog to inform user
+            if (!versionMismatchIgnore)
+            {
+                emit protocolStatusMessage(tr("The MAVLink protocol version on the MAV and APM Planner mismatch!"),
+                                           tr("It is unsafe to use different MAVLink versions. APM Planner therefore refuses to connect to system %1, which sends MAVLink version %2 (APM Planner uses version %3).").arg(message.sysid).arg(heartbeat.mavlink_version).arg(MAVLINK_VERSION));
+                versionMismatchIgnore = true;
             }
 
-            // Only count message if UAS exists for this message
-            if (uas != NULL)
+            // Ignore this message and continue gracefully
+            return;
+        }
+
+        // Create a new UAS object
+        uas = m_connectionManager->createUAS(this,link,message.sysid,&heartbeat); //QGCMAVLinkUASFactory::createUAS(this, link, message.sysid, &heartbeat);
+    }
+
+    // Only count message if UAS exists for this message
+    if (uas != NULL)
+    {
+
+        // Increase receive counter
+        totalReceiveCounter[linkId]++;
+        currReceiveCounter[linkId]++;
+
+        // Update last message sequence ID
+        uint8_t expectedIndex;
+        if (lastIndex.contains(message.sysid))
+        {
+            if (lastIndex.value(message.sysid).contains(message.compid))
             {
-
-                // Increase receive counter
-                totalReceiveCounter++;
-                currReceiveCounter++;
-
-                // Update last message sequence ID
-                uint8_t expectedIndex;
-                if (lastIndex[message.sysid][message.compid] == -1)
+                if (lastIndex.value(message.sysid).value(message.compid) == static_cast<uint8_t>(-1))
                 {
                     lastIndex[message.sysid][message.compid] = message.seq;
                     expectedIndex = message.seq;
                 }
                 else
                 {
-                    // NOTE: Using uint8_t here auto-wraps the number around to 0.
                     expectedIndex = lastIndex[message.sysid][message.compid] + 1;
                 }
-
-                // Make some noise if a message was skipped
-                //QLOG_DEBUG() << "SYSID" << message.sysid << "COMPID" << message.compid << "MSGID" << message.msgid << "EXPECTED INDEX:" << expectedIndex << "SEQ" << message.seq;
-                if (message.seq != expectedIndex)
-                {
-                    // Determine how many messages were skipped accounting for 0-wraparound
-                    int16_t lostMessages = message.seq - expectedIndex; 
-                    if (lostMessages < 0)
-                    {
-                        // Usually, this happens in the case of an out-of order packet
-                        lostMessages = 0;
-                    }
-                    else
-                    {
-                        // Console generates excessive load at high loss rates, needs better GUI visualization
-                        //QLOG_DEBUG() << QString("Lost %1 messages for comp %4: expected sequence ID %2 but received %3.").arg(lostMessages).arg(expectedIndex).arg(message.seq).arg(message.compid);
-                    }
-                    totalLossCounter += lostMessages;
-                    currLossCounter += lostMessages;
-                }
-
-                // Update the last sequence ID
-                lastIndex[message.sysid][message.compid] = message.seq;
-
-                // Update on every 32th packet
-                if (totalReceiveCounter % 32 == 0)
-                {
-                    // Calculate new loss ratio
-                    // Receive loss
-                    float receiveLoss = (double)currLossCounter/(double)(currReceiveCounter+currLossCounter);
-                    receiveLoss *= 100.0f;
-                    currLossCounter = 0;
-                    currReceiveCounter = 0;
-                    emit receiveLossChanged(message.sysid, receiveLoss);
-                }
-
-                // The packet is emitted as a whole, as it is only 255 - 261 bytes short
-                // kind of inefficient, but no issue for a groundstation pc.
-                // It buys as reentrancy for the whole code over all threads
-                emit messageReceived(link, message);
-
-                // Multiplex message if enabled
-                if (m_multiplexingEnabled)
-                {
-                    // Get all links connected to this unit
-                    QList<LinkInterface*> links = LinkManager::instance()->getLinksForProtocol(this);
-
-                    // Emit message on all links that are currently connected
-                    foreach (LinkInterface* currLink, links)
-                    {
-                        // Only forward this message to the other links,
-                        // not the link the message was received on
-                        if (currLink != link) sendMessage(currLink, message, message.sysid, message.compid);
-                    }
-                }
+            }
+            else
+            {
+                lastIndex[message.sysid].insert(message.compid,message.seq);
+                expectedIndex = message.seq;
             }
         }
+        else
+        {
+            lastIndex.insert(message.sysid,QMap<int,uint8_t>());
+            lastIndex[message.sysid].insert(message.compid,message.seq);
+            expectedIndex = message.seq;
+        }
+
+        // Make some noise if a message was skipped
+        //QLOG_DEBUG() << "SYSID" << message.sysid << "COMPID" << message.compid << "MSGID" << message.msgid << "EXPECTED INDEX:" << expectedIndex << "SEQ" << message.seq;
+        if (message.seq != expectedIndex)
+        {
+            // Determine how many messages were skipped accounting for 0-wraparound
+            int16_t lostMessages = message.seq - expectedIndex;
+            if (lostMessages < 0)
+            {
+                // Usually, this happens in the case of an out-of order packet
+                lostMessages = 0;
+            }
+            else
+            {
+                // Console generates excessive load at high loss rates, needs better GUI visualization
+                //QLOG_DEBUG() << QString("Lost %1 messages for comp %4: expected sequence ID %2 but received %3.").arg(lostMessages).arg(expectedIndex).arg(message.seq).arg(message.compid);
+            }
+            totalLossCounter[linkId] += lostMessages;
+            currLossCounter[linkId] += lostMessages;
+        }
+
+        // Update the last sequence ID
+        lastIndex[message.sysid][message.compid] = message.seq;
+
+        // Update on every 32th packet
+        if (totalReceiveCounter[linkId] % 32 == 0)
+        {
+            // Calculate new loss ratio
+            // Receive loss
+            float receiveLoss = (double)currLossCounter[linkId]/(double)(currReceiveCounter[linkId]+currLossCounter[linkId]);
+            receiveLoss *= 100.0f;
+            currLossCounter[linkId] = 0;
+            currReceiveCounter[linkId] = 0;
+            emit receiveLossChanged(message.sysid, receiveLoss);
+        }
+
+        // The packet is emitted as a whole, as it is only 255 - 261 bytes short
+        // kind of inefficient, but no issue for a groundstation pc.
+        // It buys as reentrancy for the whole code over all threads
+        emit messageReceived(link, message);
+
+        // Multiplex message if enabled
+        //if (m_multiplexingEnabled)
+        //{
+            // Get all links connected to this unit
+            //QList<LinkInterface*> links = LinkManager::instance()->getLinksForProtocol(this);
+
+            // Emit message on all links that are currently connected
+            //foreach (LinkInterface* currLink, links)
+            //{
+                // Only forward this message to the other links,
+                // not the link the message was received on
+             //   if (currLink != link) sendMessage(currLink, message, message.sysid, message.compid);
+            //}
+        //}
     }
 }
 
-/**
- * @return The name of this protocol
- **/
-QString MAVLinkProtocol::getName()
+void MAVLinkProtocol::stopLogging()
 {
-    return QString(tr("MAVLink protocol"));
-}
-
-/** @return System id of this application */
-int MAVLinkProtocol::getSystemId()
-{
-    return systemId;
-}
-
-void MAVLinkProtocol::setSystemId(int id)
-{
-    systemId = id;
-}
-
-/** @return Component id of this application */
-int MAVLinkProtocol::getComponentId()
-{
-    return QGC::defaultComponentId;
-}
-
-/**
- * @param message message to send
- */
-void MAVLinkProtocol::sendMessage(mavlink_message_t message)
-{
-    // Get all links connected to this unit
-    QList<LinkInterface*> links = LinkManager::instance()->getLinksForProtocol(this);
-
-    // Emit message on all links that are currently connected
-    QList<LinkInterface*>::iterator i;
-    for (i = links.begin(); i != links.end(); ++i)
-    {
-        sendMessage(*i, message);
-        QLOG_TRACE() << "SENT MESSAGE OVER" << ((LinkInterface*)*i)->getName() << "LIST SIZE:" << links.size();
+    if (m_logfile && m_logfile->isOpen()){
+        QLOG_DEBUG() << "Stop MAVLink logging" << m_logfile->fileName();
+        // Close the current open file
+        m_logfile->close();
+        delete m_logfile;
+        m_logfile = NULL;
     }
-}
-
-/**
- * @param link the link to send the message over
- * @param message message to send
- */
-void MAVLinkProtocol::sendMessage(LinkInterface* link, mavlink_message_t message)
-{
-    // Create buffer
-    static uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
-    // Rewriting header to ensure correct link ID is set
-    static uint8_t messageKeys[256] = MAVLINK_MESSAGE_CRCS;
-    if (link->getId() != 0) mavlink_finalize_message_chan(&message, this->getSystemId(), this->getComponentId(), link->getId(), message.len, messageKeys[message.msgid]);
-    // Write message into buffer, prepending start sign
-    int len = mavlink_msg_to_send_buffer(buffer, &message);
-    // If link is connected
-    if (link->isConnected())
-    {
-        // Send the portion of the buffer now occupied by the message
-        link->writeBytes((const char*)buffer, len);
-    }
-}
-
-/**
- * @param link the link to send the message over
- * @param message message to send
- * @param systemid id of the system the message is originating from
- * @param componentid id of the component the message is originating from
- */
-void MAVLinkProtocol::sendMessage(LinkInterface* link, mavlink_message_t message, quint8 systemid, quint8 componentid)
-{
-    // Create buffer
-    static uint8_t buffer[MAVLINK_MAX_PACKET_LEN];
-    // Rewriting header to ensure correct link ID is set
-    static uint8_t messageKeys[256] = MAVLINK_MESSAGE_CRCS;
-    if (link->getId() != 0) mavlink_finalize_message_chan(&message, systemid, componentid, link->getId(), message.len, messageKeys[message.msgid]);
-    // Write message into buffer, prepending start sign
-    int len = mavlink_msg_to_send_buffer(buffer, &message);
-    // If link is connected
-    if (link->isConnected())
-    {
-        // Send the portion of the buffer now occupied by the message
-        link->writeBytes((const char*)buffer, len);
-    }
-}
-
-/**
- * The heartbeat is sent out of order and does not reset the
- * periodic heartbeat emission. It will be just sent in addition.
- * @return mavlink_message_t heartbeat message sent on serial link
- */
-void MAVLinkProtocol::sendHeartbeat()
-{
-    if (m_heartbeatsEnabled)
-    {
-        mavlink_message_t beat;
-        mavlink_msg_heartbeat_pack(getSystemId(), getComponentId(),&beat, MAV_TYPE_GCS, MAV_AUTOPILOT_INVALID, MAV_MODE_MANUAL_ARMED, 0, MAV_STATE_ACTIVE);
-        sendMessage(beat);
-    }
-    if (m_authEnabled)
-    {
-        mavlink_message_t msg;
-        mavlink_auth_key_t auth;
-        memset(&auth, 0, sizeof(auth));
-        memcpy(auth.key, m_authKey.toStdString().c_str(), qMin(m_authKey.length(), MAVLINK_MSG_AUTH_KEY_FIELD_KEY_LEN));
-        mavlink_msg_auth_key_encode(getSystemId(), getComponentId(), &msg, &auth);
-        sendMessage(msg);
-    }
-}
-
-/** @param enabled true to enable heartbeats emission at heartbeatRate, false to disable */
-void MAVLinkProtocol::enableHeartbeats(bool enabled)
-{
-    m_heartbeatsEnabled = enabled;
-    emit heartbeatChanged(enabled);
-}
-
-void MAVLinkProtocol::enableMultiplexing(bool enabled)
-{
-    bool changed = false;
-    if (enabled != m_multiplexingEnabled) changed = true;
-
-    m_multiplexingEnabled = enabled;
-    if (changed) emit multiplexingChanged(m_multiplexingEnabled);
-}
-
-void MAVLinkProtocol::enableAuth(bool enable)
-{
-    bool changed = false;
-    m_authEnabled = enable;
-    if (m_authEnabled != enable) {
-        changed = true;
-    }
-    if (changed) emit authChanged(m_authEnabled);
-}
-
-void MAVLinkProtocol::enableParamGuard(bool enabled)
-{
-    if (enabled != m_paramGuardEnabled) {
-        m_paramGuardEnabled = enabled;
-        emit paramGuardChanged(m_paramGuardEnabled);
-    }
-}
-
-void MAVLinkProtocol::enableActionGuard(bool enabled)
-{
-    if (enabled != m_actionGuardEnabled) {
-        m_actionGuardEnabled = enabled;
-        emit actionGuardChanged(m_actionGuardEnabled);
-    }
-}
-
-void MAVLinkProtocol::setParamRetransmissionTimeout(int ms)
-{
-    if (ms != m_paramRetransmissionTimeout) {
-        m_paramRetransmissionTimeout = ms;
-        emit paramRetransmissionTimeoutChanged(m_paramRetransmissionTimeout);
-    }
-}
-
-void MAVLinkProtocol::setParamRewriteTimeout(int ms)
-{
-    if (ms != m_paramRewriteTimeout) {
-        m_paramRewriteTimeout = ms;
-        emit paramRewriteTimeoutChanged(m_paramRewriteTimeout);
-    }
-}
-
-void MAVLinkProtocol::setActionRetransmissionTimeout(int ms)
-{
-    if (ms != m_actionRetransmissionTimeout) {
-        m_actionRetransmissionTimeout = ms;
-        emit actionRetransmissionTimeoutChanged(m_actionRetransmissionTimeout);
-    }
+    m_loggingEnabled = false;
 }
 
 bool MAVLinkProtocol::startLogging(const QString& filename)
 {
+    if (m_logfile && m_logfile->isOpen())
+    {
+        return true;
+    }
     stopLogging();
     QLOG_DEBUG() << "Start MAVLink logging" << filename;
 
@@ -650,43 +421,6 @@ bool MAVLinkProtocol::startLogging(const QString& filename)
         delete m_logfile;
         m_logfile = NULL;
     }
-    emit loggingChanged(m_loggingEnabled);
+    //emit loggingChanged(m_loggingEnabled);
     return m_loggingEnabled; // reflects if logging started or not.
 }
-
-void MAVLinkProtocol::stopLogging()
-{
-    if (m_logfile && m_logfile->isOpen()){
-        QLOG_DEBUG() << "Stop MAVLink logging" << m_logfile->fileName();
-        // Close the current open file
-        m_logfile->close();
-        delete m_logfile;
-        m_logfile = NULL;
-    }
-    m_loggingEnabled = false;
-}
-
-void MAVLinkProtocol::enableVersionCheck(bool enabled)
-{
-    m_enable_version_check = enabled;
-    emit versionCheckChanged(enabled);
-}
-
-/**
- * The default rate is 1 Hertz.
- *
- * @param rate heartbeat rate in hertz (times per second)
- */
-void MAVLinkProtocol::setHeartbeatRate(int rate)
-{
-    heartbeatRate = rate;
-    heartbeatTimer->setInterval(1000/heartbeatRate);
-}
-
-/** @return heartbeat rate in Hertz */
-int MAVLinkProtocol::getHeartbeatRate()
-{
-    return heartbeatRate;
-}
-
-

@@ -23,7 +23,10 @@ private slots:
     void setMAVLinkLogDir();
     void setParamDir();
     void setAppDataDir();
+    void setMissionsDir();
     void ratesChanged();
+    void setBetaRelease(bool state);
+    void setHideDonateButton(bool state);
 
     void setActiveUAS(UASInterface *uas);
 

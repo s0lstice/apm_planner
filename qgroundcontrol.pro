@@ -29,13 +29,49 @@ message(Qt version $$[QT_VERSION])
 # to allow us to easily modify suported build types in one place instead of duplicated throughout
 # the project file.
 
-linux-g++ | linux-g++-64 {
-    message(Linux build)
+DEFINES+=DISABLE_3DMOUSE    # Disable 3D mice support for now
+#DEFINES+=ENABLE_CAMRAVIEW   # Example to include camraview
+
+linux-g++-64 {
+    message(Linux build x64_86)
     CONFIG += LinuxBuild
-} else : win32-msvc2008 | win32-msvc2010 | win32-msvc2012 {
+    DEFINES += Q_LINUX_64
+    DEFINES += FLITE_AUDIO_ENABLED
+
+    DISTRO = $$system(lsb_release -i)
+
+    contains( DISTRO, "Ubuntu" ) {
+        message(Ubuntu Build)
+        DEFINES += Q_UBUNTU
+    }
+
+    contains( DISTRO, "Arch" ) {
+        message(ArchLinux Build)
+        DEFINES += Q_ARCHLINUX
+    }
+
+} else: linux-g++ {
+    message(Linux build x86)
+    CONFIG += LinuxBuild
+    DEFINES += Q_LINUX_32
+    DEFINES += FLITE_AUDIO_ENABLED
+
+    DISTRO = $$system(lsb_release -i)
+
+    contains( DISTRO, "Ubuntu" ) {
+        message(Ubuntu Build)
+        DEFINES += Q_UBUNTU
+    }
+
+    contains( DISTRO, "Arch" ) {
+        message(ArchLinux Build)
+        DEFINES += Q_ARCHLINUX
+    }
+
+} else : win32-msvc2012 | win32-msvc2013 {
     message(Windows build)
     CONFIG += WindowsBuild
-}  else : win32-x-g++|win64-x-g++ {
+}  else : win32-g++|win64-g++ {
     message(Windows Cross Build)
     CONFIG += WindowsCrossBuild
 } else : macx-clang | macx-g++ {
@@ -87,35 +123,49 @@ QT += network \
     opengl \
     svg \
     xml \
-    phonon \
-    webkit \
     sql \
-    declarative
+    widgets \
+    serialport \
+    script\
+    quick \
+    printsupport \
+    qml \
+    quickwidgets
 
 ##  testlib is needed even in release flavor for QSignalSpy support
-#QT += testlib
+QT += testlib
 
-gittouch.commands = touch qgroundcontrol.pro
-QMAKE_EXTRA_TARGETS += gittouch
-POST_TARGETDEPS += gittouch
+#Not sure what we were doing here, will have to ask
+#!NOTOUCH {
+#    gittouch.commands = touch qgroundcontrol.pro
+#    QMAKE_EXTRA_TARGETS += gittouch
+#    POST_TARGETDEPS += gittouch
+#}
 
 # Turn off serial port warnings
 DEFINES += _TTY_NOWARN_
 
-#
-# Logging Library
-#
-include (QsLog/QsLog.pri)
+#Turn on camera view
+#DEFINES += AMERAVIEW
 
+#include (libs/mavlink/include/mavlink/v1.0-qt/mavlink.pri)
 #
 # OS Specific settings
 #
 
+RaspberryPiBuild {
+   DEFINES -= CAMERAVIEW
+}
+
 MacBuild {
+    QT += multimedia
+
     QMAKE_INFO_PLIST = Custom-Info.plist
     CONFIG += x86_64
     CONFIG -= x86
-    QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.6
+    CONFIG += c++11 #C++11 support
+    QMAKE_MAC_SDK = macosx10.11 # Required for Xcode7.0
+    QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.7
     ICON = $$BASEDIR/files/APMIcons/icon.icns
     QMAKE_INFO_PLIST = APMPlanner.plist   # Sets the pretty name for the build
 
@@ -128,7 +178,6 @@ MacBuild {
 }
 
 LinuxBuild {
-    QT += script
     DEFINES += __STDC_LIMIT_MACROS
 
     DEFINES += GIT_COMMIT=$$system(git describe --dirty=-DEV --always)
@@ -137,10 +186,10 @@ LinuxBuild {
     LIBS += -lsndfile -lasound
     LIBS += -lz
     LIBS += -lssl -lcrypto
+    DEFINES += OPENSSL
 }
 
 WindowsBuild {
-    QT += script
     DEFINES += __STDC_LIMIT_MACROS
 
     # Specify multi-process compilation within Visual Studio.
@@ -153,8 +202,8 @@ WindowsBuild {
 
     RC_FILE = $$BASEDIR/qgroundcontrol.rc
 
-    DEFINES += GIT_COMMIT=$$system(\"c:/program files (x86)/git/bin/git.exe\" describe --dirty=-DEV --always)
-    DEFINES += GIT_HASH=$$system(\"c:/program files (x86)/git/bin/git.exe\" log -n 1 --pretty=format:%H)
+    DEFINES += GIT_COMMIT=$$system(git describe --dirty=-DEV --always)
+    DEFINES += GIT_HASH=$$system(git log -n 1 --pretty=format:%H)
 }
 
 WindowsCrossBuild {
@@ -178,7 +227,8 @@ WindowsCrossBuild {
 #
 
 DebugBuild {
-    CONFIG += console
+#Let console be defined by the IDE/Build process.
+    #CONFIG += console
 }
 
 ReleaseBuild {
@@ -274,13 +324,11 @@ FORMS += \
     src/ui/UASControl.ui \
     src/ui/UASList.ui \
     src/ui/UASInfo.ui \
-    src/ui/Linechart.ui \
     src/ui/UASView.ui \
     src/ui/ParameterInterface.ui \
-    src/ui/WaypointList.ui \    
+    src/ui/WaypointList.ui \
     src/ui/ObjectDetectionView.ui \
     src/ui/JoystickWidget.ui \
-    src/ui/DebugConsole.ui \
     src/ui/HDDisplay.ui \
     src/ui/MAVLinkSettingsWidget.ui \
     src/ui/AudioOutputWidget.ui \
@@ -290,10 +338,7 @@ FORMS += \
     src/ui/watchdog/WatchdogView.ui \
     src/ui/QGCFirmwareUpdate.ui \
     src/ui/QGCPxImuFirmwareUpdate.ui \
-    src/ui/QGCDataPlot2D.ui \
-    src/ui/QGCRemoteControlView.ui \
     src/ui/QMap3D.ui \
-    src/ui/QGCWebView.ui \
     src/ui/SlugsDataSensorView.ui \
     src/ui/SlugsHilSim.ui \
     src/ui/SlugsPadCameraControl.ui \
@@ -305,14 +350,14 @@ FORMS += \
     src/ui/QGCMAVLinkLogPlayer.ui \
     src/ui/QGCWaypointListMulti.ui \
     src/ui/QGCUDPLinkConfiguration.ui \
+    src/ui/QGCUDPClientLinkConfiguration.ui \
     src/ui/QGCTCPLinkConfiguration.ui \
     src/ui/QGCSettingsWidget.ui \
-    src/ui/UASControlParameters.ui \
     src/ui/map/QGCMapTool.ui \
     src/ui/map/QGCMapToolBar.ui \
     src/ui/QGCMAVLinkInspector.ui \
-    src/ui/WaypointViewOnlyView.ui \    
-    src/ui/WaypointEditableView.ui \    
+    src/ui/WaypointViewOnlyView.ui \
+    src/ui/WaypointEditableView.ui \
     src/ui/UnconnectedUASInfoWidget.ui \
     src/ui/mavlink/QGCMAVLinkMessageSender.ui \
     src/ui/firmwareupdate/QGCFirmwareUpdateWidget.ui \
@@ -321,21 +366,36 @@ FORMS += \
     src/ui/mission/QGCMissionOther.ui \
     src/ui/mission/QGCMissionNavWaypoint.ui \
     src/ui/mission/QGCMissionDoJump.ui \
+    src/ui/mission/QGCMissionDoSetServo.ui \
+    src/ui/mission/QGCMissionDoRepeatServo.ui \
+    src/ui/mission/QGCMissionDoDigicamControl.ui \
+    src/ui/mission/QGCMissionDoChangeSpeed.ui \
+    src/ui/mission/QGCMissionDoSetCamTriggDist.ui \
+    src/ui/mission/QGCMissionDoSetHome.ui \
+    src/ui/mission/QGCMissionDoSetRelay.ui \
+    src/ui/mission/QGCMissionDoSetReverse.ui \
+    src/ui/mission/QGCMissionDoSetROI.ui \
+    src/ui/mission/QGCMissionDoMountControl.ui \
+    src/ui/mission/QGCMissionDoRepeatRelay.ui \
     src/ui/mission/QGCMissionConditionDelay.ui \
+    src/ui/mission/QGCMissionConditionYaw.ui \
+    src/ui/mission/QGCMissionConditionDistance.ui \
     src/ui/mission/QGCMissionNavLoiterUnlim.ui \
     src/ui/mission/QGCMissionNavLoiterTurns.ui \
     src/ui/mission/QGCMissionNavLoiterTime.ui \
+    src/ui/mission/QGCMissionNavLoiterToAlt.ui \
     src/ui/mission/QGCMissionNavReturnToLaunch.ui \
     src/ui/mission/QGCMissionNavLand.ui \
     src/ui/mission/QGCMissionNavTakeoff.ui \
     src/ui/mission/QGCMissionNavSweep.ui \
+    src/ui/mission/QGCMissionNavContinueChangeAlt.ui \
     src/ui/mission/QGCMissionDoStartSearch.ui \
     src/ui/mission/QGCMissionDoFinishSearch.ui \
     src/ui/QGCVehicleConfig.ui \
     src/ui/QGCHilConfiguration.ui \
     src/ui/QGCHilFlightGearConfiguration.ui \
     src/ui/QGCHilJSBSimConfiguration.ui \
-    src/ui/QGCHilXPlaneConfiguration.ui \
+#    src/ui/QGCHilXPlaneConfiguration.ui \
     src/ui/designer/QGCComboBox.ui \
     src/ui/designer/QGCTextLabel.ui \
     src/ui/uas/UASQuickView.ui \
@@ -353,7 +413,7 @@ FORMS += \
     src/ui/configuration/FlightModeConfig.ui \
     src/ui/configuration/Radio3DRConfig.ui \
     src/ui/configuration/BatteryMonitorConfig.ui \
-    src/ui/configuration/SonarConfig.ui \
+    src/ui/configuration/RangeFinderConfig.ui \
     src/ui/configuration/AirspeedConfig.ui \
     src/ui/configuration/OpticalFlowConfig.ui \
     src/ui/configuration/OsdConfig.ui \
@@ -365,6 +425,7 @@ FORMS += \
     src/ui/configuration/FailSafeConfig.ui \
     src/ui/configuration/AdvancedParamConfig.ui \
     src/ui/configuration/ArduCopterPidConfig.ui \
+    src/ui/configuration/CopterPidConfig.ui \
     src/ui/configuration/ApmPlaneLevel.ui \
     src/ui/configuration/ParamWidget.ui \
     src/ui/configuration/ArduPlanePidConfig.ui \
@@ -384,7 +445,11 @@ FORMS += \
     src/ui/AboutDialog.ui \
     src/ui/AP2DataPlotAxisDialog.ui \
     src/ui/AutoUpdateDialog.ui \
-    src/uas/LogDownloadDialog.ui
+    src/uas/LogDownloadDialog.ui \
+    src/ui/configuration/CompassMotorCalibrationDialog.ui \
+    src/ui/MissionElevationDisplay.ui \
+    src/ui/uas/PreFlightCalibrationDialog.ui \
+    src/ui/configuration/RadioFlashWizard.ui
 
 HEADERS += \
     src/MG.h \
@@ -395,12 +460,11 @@ HEADERS += \
     src/comm/LinkManager.h \
     src/comm/LinkInterface.h \
     src/comm/SerialLinkInterface.h \
-    src/comm/SerialLink.h \
     src/comm/ProtocolInterface.h \
-    src/comm/MAVLinkProtocol.h \
     src/comm/QGCFlightGearLink.h \
     src/comm/QGCJSBSimLink.h \
-    src/comm/QGCXPlaneLink.h \
+#    src/comm/QGCXPlaneLink.h \
+    src/comm/serialconnection.h \
     src/ui/CommConfigurationWindow.h \
     src/ui/SerialConfigurationWindow.h \
     src/ui/MainWindow.h \
@@ -408,23 +472,19 @@ HEADERS += \
     src/ui/uas/UASListWidget.h \
     src/ui/uas/UASInfoWidget.h \
     src/ui/HUD.h \
-    src/ui/linechart/LinechartWidget.h \
-    src/ui/linechart/LinechartPlot.h \
-    src/ui/linechart/Scrollbar.h \
-    src/ui/linechart/ScrollZoomer.h \
     src/configuration.h \
     src/ui/uas/UASView.h \
-    src/ui/CameraView.h \
     src/comm/MAVLinkSimulationLink.h \
     src/comm/UDPLink.h \
+    src/comm/UDPClientLink.h \
     src/comm/TCPLink.h \
     src/ui/ParameterInterface.h \
     src/ui/WaypointList.h \
-    src/Waypoint.h \   
+    src/ui/WaypointNavigation.h \
+    src/Waypoint.h \
     src/ui/ObjectDetectionView.h \
     src/input/JoystickInput.h \
     src/ui/JoystickWidget.h \
-    src/ui/DebugConsole.h \
     src/ui/HDDisplay.h \
     src/ui/MAVLinkSettingsWidget.h \
     src/ui/AudioOutputWidget.h \
@@ -432,7 +492,6 @@ HEADERS += \
     src/LogCompressor.h \
     src/ui/QGCParamWidget.h \
     src/ui/QGCSensorSettingsWidget.h \
-    src/ui/linechart/Linecharts.h \
     src/uas/SlugsMAV.h \
     src/uas/PxQuadMAV.h \
     src/uas/ArduPilotMegaMAV.h \
@@ -445,18 +504,8 @@ HEADERS += \
     src/QGC.h \
     src/ui/QGCFirmwareUpdate.h \
     src/ui/QGCPxImuFirmwareUpdate.h \
-    src/ui/QGCDataPlot2D.h \
-    src/ui/linechart/IncrementalPlot.h \
-    src/ui/QGCRemoteControlView.h \
     src/ui/RadioCalibration/RadioCalibrationData.h \
-    src/ui/RadioCalibration/RadioCalibrationWindow.h \
-    src/ui/RadioCalibration/AirfoilServoCalibrator.h \
-    src/ui/RadioCalibration/SwitchCalibrator.h \
-    src/ui/RadioCalibration/CurveCalibrator.h \
-    src/ui/RadioCalibration/AbstractCalibrator.h \
     src/comm/QGCMAVLink.h \
-    src/ui/QGCWebView.h \
-    src/ui/map3D/QGCWebPage.h \
     src/ui/SlugsDataSensorView.h \
     src/ui/SlugsHilSim.h \
     src/ui/SlugsPadCameraControl.h \
@@ -473,9 +522,9 @@ HEADERS += \
     src/uas/QGCMAVLinkUASFactory.h \
     src/ui/QGCWaypointListMulti.h \
     src/ui/QGCUDPLinkConfiguration.h \
+    src/ui/QGCUDPClientLinkConfiguration.h \
     src/ui/QGCTCPLinkConfiguration.h \
     src/ui/QGCSettingsWidget.h \
-    src/ui/uas/UASControlParameters.h \
     src/uas/QGCUASParamManager.h \
     src/ui/map/QGCMapWidget.h \
     src/ui/map/MAV2DIcon.h \
@@ -486,9 +535,8 @@ HEADERS += \
     src/ui/QGCToolBar.h \
     src/ui/QGCStatusBar.h \
     src/ui/QGCMAVLinkInspector.h \
-    src/ui/MAVLinkDecoder.h \
     src/ui/WaypointViewOnlyView.h \
-    src/ui/WaypointEditableView.h \    
+    src/ui/WaypointEditableView.h \
     src/ui/UnconnectedUASInfoWidget.h \
     src/ui/QGCRGBDView.h \
     src/ui/mavlink/QGCMAVLinkMessageSender.h \
@@ -498,14 +546,29 @@ HEADERS += \
     src/ui/mission/QGCMissionOther.h \
     src/ui/mission/QGCMissionNavWaypoint.h \
     src/ui/mission/QGCMissionDoJump.h \
+    src/ui/mission/QGCMissionDoSetServo.h \
+    src/ui/mission/QGCMissionDoRepeatServo.h \
+    src/ui/mission/QGCMissionDoDigicamControl.h \
+    src/ui/mission/QGCMissionDoChangeSpeed.h \
+    src/ui/mission/QGCMissionDoSetCamTriggDist.h \
+    src/ui/mission/QGCMissionDoSetHome.h \
+    src/ui/mission/QGCMissionDoSetRelay.h \
+    src/ui/mission/QGCMissionDoSetReverse.h \
+    src/ui/mission/QGCMissionDoSetROI.h \
+    src/ui/mission/QGCMissionDoMountControl.h \
+    src/ui/mission/QGCMissionDoRepeatRelay.h \
     src/ui/mission/QGCMissionConditionDelay.h \
+    src/ui/mission/QGCMissionConditionYaw.h \
+    src/ui/mission/QGCMissionConditionDistance.h \
     src/ui/mission/QGCMissionNavLoiterUnlim.h \
     src/ui/mission/QGCMissionNavLoiterTurns.h \
     src/ui/mission/QGCMissionNavLoiterTime.h \
+    src/ui/mission/QGCMissionNavLoiterToAlt.h \
     src/ui/mission/QGCMissionNavReturnToLaunch.h \
     src/ui/mission/QGCMissionNavLand.h \
     src/ui/mission/QGCMissionNavTakeoff.h \
     src/ui/mission/QGCMissionNavSweep.h \
+    src/ui/mission/QGCMissionNavContinueChangeAlt.h \
     src/ui/mission/QGCMissionDoStartSearch.h \
     src/ui/mission/QGCMissionDoFinishSearch.h \
     src/ui/QGCVehicleConfig.h \
@@ -513,7 +576,7 @@ HEADERS += \
     src/ui/QGCHilConfiguration.h \
     src/ui/QGCHilFlightGearConfiguration.h \
     src/ui/QGCHilJSBSimConfiguration.h \
-    src/ui/QGCHilXPlaneConfiguration.h \
+#    src/ui/QGCHilXPlaneConfiguration.h \
     src/ui/designer/QGCComboBox.h \
     src/ui/designer/QGCTextLabel.h \
     src/ui/submainwindow.h \
@@ -538,7 +601,7 @@ HEADERS += \
     src/ui/configuration/FlightModeConfig.h \
     src/ui/configuration/Radio3DRConfig.h \
     src/ui/configuration/BatteryMonitorConfig.h \
-    src/ui/configuration/SonarConfig.h \
+    src/ui/configuration/RangeFinderConfig.h \
     src/ui/configuration/AirspeedConfig.h \
     src/ui/configuration/OpticalFlowConfig.h \
     src/ui/configuration/OsdConfig.h \
@@ -551,6 +614,7 @@ HEADERS += \
     src/ui/configuration/FailSafeConfig.h \
     src/ui/configuration/AdvancedParamConfig.h \
     src/ui/configuration/ArduCopterPidConfig.h \
+    src/ui/configuration/CopterPidConfig.h \
     src/ui/ApmToolBar.h \
     src/ui/configuration/PX4FirmwareUploader.h \
     src/ui/configuration/ApmPlaneLevel.h \
@@ -591,9 +655,28 @@ HEADERS += \
     src/ui/AutoUpdateCheck.h \
     src/ui/AutoUpdateDialog.h \
     src/uas/LogDownloadDialog.h \
-    src/comm/TLogReplayLink.h
-#    libs/sik_uploader/qsikuploader.h \
-#    libs/sik_uploader/sikuploader.h \
+    src/comm/TLogReplayLink.h \
+    src/ui/PrimaryFlightDisplayQML.h \
+    src/ui/configuration/CompassMotorCalibrationDialog.h \
+    src/comm/MAVLinkDecoder.h \
+    src/comm/MAVLinkProtocol.h \
+    src/ui/MissionElevationDisplay.h \
+    src/ui/GoogleElevationData.h \
+    src/comm/UASObject.h \
+    src/comm/VehicleOverview.h \
+    src/comm/RelPositionOverview.h \
+    src/comm/AbsPositionOverview.h \
+    src/comm/MissionOverview.h \
+    src/ui/AP2DataPlot2DModel.h \
+    src/ui/uas/PreFlightCalibrationDialog.h \
+    src/ui/configuration/RadioFlashWizard.h \
+    src/ui/GraphTreeWidgetItem.h \
+    src/comm/LinkManagerFactory.h \
+    src/ui/VibrationMonitor.h \
+    src/ui/EKFMonitor.h \
+    src/Settings.h \
+    src/logging.h \
+    src/uas/APMFirmwareVersion.h
 
 SOURCES += src/main.cc \
     src/QGCCore.cc \
@@ -601,11 +684,10 @@ SOURCES += src/main.cc \
     src/uas/UAS.cc \
     src/comm/LinkManager.cc \
     src/comm/LinkInterface.cpp \
-    src/comm/SerialLink.cc \
-    src/comm/MAVLinkProtocol.cc \
     src/comm/QGCFlightGearLink.cc \
     src/comm/QGCJSBSimLink.cc \
-    src/comm/QGCXPlaneLink.cc \
+#    src/comm/QGCXPlaneLink.cc \
+    src/comm/serialconnection.cc \
     src/ui/CommConfigurationWindow.cc \
     src/ui/SerialConfigurationWindow.cc \
     src/ui/MainWindow.cc \
@@ -613,22 +695,18 @@ SOURCES += src/main.cc \
     src/ui/uas/UASListWidget.cc \
     src/ui/uas/UASInfoWidget.cc \
     src/ui/HUD.cc \
-    src/ui/linechart/LinechartWidget.cc \
-    src/ui/linechart/LinechartPlot.cc \
-    src/ui/linechart/Scrollbar.cc \
-    src/ui/linechart/ScrollZoomer.cc \
     src/ui/uas/UASView.cc \
-    src/ui/CameraView.cc \
     src/comm/MAVLinkSimulationLink.cc \
     src/comm/UDPLink.cc \
+    src/comm/UDPClientLink.cc \
     src/comm/TCPLink.cc \
     src/ui/ParameterInterface.cc \
     src/ui/WaypointList.cc \
+    src/ui/WaypointNavigation.cc \
     src/Waypoint.cc \
     src/ui/ObjectDetectionView.cc \
     src/input/JoystickInput.cc \
     src/ui/JoystickWidget.cc \
-    src/ui/DebugConsole.cc \
     src/ui/HDDisplay.cc \
     src/ui/MAVLinkSettingsWidget.cc \
     src/ui/AudioOutputWidget.cc \
@@ -636,7 +714,6 @@ SOURCES += src/main.cc \
     src/LogCompressor.cc \
     src/ui/QGCParamWidget.cc \
     src/ui/QGCSensorSettingsWidget.cc \
-    src/ui/linechart/Linecharts.cc \
     src/uas/SlugsMAV.cc \
     src/uas/PxQuadMAV.cc \
     src/uas/ArduPilotMegaMAV.cc \
@@ -649,17 +726,7 @@ SOURCES += src/main.cc \
     src/QGC.cc \
     src/ui/QGCFirmwareUpdate.cc \
     src/ui/QGCPxImuFirmwareUpdate.cc \
-    src/ui/QGCDataPlot2D.cc \
-    src/ui/linechart/IncrementalPlot.cc \
-    src/ui/QGCRemoteControlView.cc \
-    src/ui/RadioCalibration/RadioCalibrationWindow.cc \
-    src/ui/RadioCalibration/AirfoilServoCalibrator.cc \
-    src/ui/RadioCalibration/SwitchCalibrator.cc \
-    src/ui/RadioCalibration/CurveCalibrator.cc \
-    src/ui/RadioCalibration/AbstractCalibrator.cc \
     src/ui/RadioCalibration/RadioCalibrationData.cc \
-    src/ui/QGCWebView.cc \
-    src/ui/map3D/QGCWebPage.cc \
     src/ui/SlugsDataSensorView.cc \
     src/ui/SlugsHilSim.cc \
     src/ui/SlugsPadCameraControl.cpp \
@@ -676,19 +743,19 @@ SOURCES += src/main.cc \
     src/uas/QGCMAVLinkUASFactory.cc \
     src/ui/QGCWaypointListMulti.cc \
     src/ui/QGCUDPLinkConfiguration.cc \
+    src/ui/QGCUDPClientLinkConfiguration.cc \
     src/ui/QGCTCPLinkConfiguration.cc \
     src/ui/QGCSettingsWidget.cc \
-    src/ui/uas/UASControlParameters.cpp \
     src/uas/QGCUASParamManager.cc \
     src/ui/map/QGCMapWidget.cc \
     src/ui/map/MAV2DIcon.cc \
     src/ui/map/Waypoint2DIcon.cc \
     src/ui/map/QGCMapTool.cc \
     src/ui/map/QGCMapToolBar.cc \
+    src/QGCGeo.cc \
     src/ui/QGCToolBar.cc \
     src/ui/QGCStatusBar.cc \
     src/ui/QGCMAVLinkInspector.cc \
-    src/ui/MAVLinkDecoder.cc \
     src/ui/WaypointViewOnlyView.cc \
     src/ui/WaypointEditableView.cc \
     src/ui/UnconnectedUASInfoWidget.cc \
@@ -700,21 +767,36 @@ SOURCES += src/main.cc \
     src/ui/mission/QGCMissionOther.cc \
     src/ui/mission/QGCMissionNavWaypoint.cc \
     src/ui/mission/QGCMissionDoJump.cc \
+    src/ui/mission/QGCMissionDoSetServo.cc \
+    src/ui/mission/QGCMissionDoRepeatServo.cc \
+    src/ui/mission/QGCMissionDoDigicamControl.cc \
+    src/ui/mission/QGCMissionDoChangeSpeed.cc \
+    src/ui/mission/QGCMissionDoSetCamTriggDist.cc \
+    src/ui/mission/QGCMissionDoSetHome.cc \
+    src/ui/mission/QGCMissionDoSetRelay.cc \
+    src/ui/mission/QGCMissionDoSetReverse.cc \
+    src/ui/mission/QGCMissionDoSetROI.cc \
+    src/ui/mission/QGCMissionDoMountControl.cc \
+    src/ui/mission/QGCMissionDoRepeatRelay.cc \
     src/ui/mission/QGCMissionConditionDelay.cc \
+    src/ui/mission/QGCMissionConditionYaw.cc \
+    src/ui/mission/QGCMissionConditionDistance.cc \
     src/ui/mission/QGCMissionNavLoiterUnlim.cc \
     src/ui/mission/QGCMissionNavLoiterTurns.cc \
     src/ui/mission/QGCMissionNavLoiterTime.cc \
+    src/ui/mission/QGCMissionNavLoiterToAlt.cc \
     src/ui/mission/QGCMissionNavReturnToLaunch.cc \
     src/ui/mission/QGCMissionNavLand.cc \
     src/ui/mission/QGCMissionNavTakeoff.cc \
     src/ui/mission/QGCMissionNavSweep.cc \
+    src/ui/mission/QGCMissionNavContinueChangeAlt.cc \
     src/ui/mission/QGCMissionDoStartSearch.cc \
     src/ui/mission/QGCMissionDoFinishSearch.cc \
     src/ui/QGCVehicleConfig.cc \
     src/ui/QGCHilConfiguration.cc \
     src/ui/QGCHilFlightGearConfiguration.cc \
     src/ui/QGCHilJSBSimConfiguration.cc \
-    src/ui/QGCHilXPlaneConfiguration.cc \
+#    src/ui/QGCHilXPlaneConfiguration.cc \
     src/ui/designer/QGCComboBox.cc \
     src/ui/designer/QGCTextLabel.cc \
     src/ui/submainwindow.cpp \
@@ -739,7 +821,7 @@ SOURCES += src/main.cc \
     src/ui/configuration/FlightModeConfig.cc \
     src/ui/configuration/Radio3DRConfig.cc \
     src/ui/configuration/BatteryMonitorConfig.cc \
-    src/ui/configuration/SonarConfig.cc \
+    src/ui/configuration/RangeFinderConfig.cc \
     src/ui/configuration/AirspeedConfig.cc \
     src/ui/configuration/OpticalFlowConfig.cc \
     src/ui/configuration/OsdConfig.cc \
@@ -752,6 +834,7 @@ SOURCES += src/main.cc \
     src/ui/configuration/FailSafeConfig.cc \
     src/ui/configuration/AdvancedParamConfig.cc \
     src/ui/configuration/ArduCopterPidConfig.cc \
+    src/ui/configuration/CopterPidConfig.cc \
     src/ui/ApmToolBar.cc \
     src/ui/configuration/PX4FirmwareUploader.cc \
     src/ui/configuration/ApmPlaneLevel.cc \
@@ -792,15 +875,59 @@ SOURCES += src/main.cc \
     src/ui/AutoUpdateCheck.cc \
     src/ui/AutoUpdateDialog.cc \
     src/uas/LogDownloadDialog.cc \
-    src/comm/TLogReplayLink.cc
-#    libs/sik_uploader/qsikuploader.cpp \
-#    libs/sik_uploader/sikuploader.cpp \
+    src/comm/TLogReplayLink.cc \
+    src/ui/PrimaryFlightDisplayQML.cpp \
+    src/ui/configuration/CompassMotorCalibrationDialog.cpp \
+    src/comm/MAVLinkDecoder.cc \
+    src/comm/MAVLinkProtocol.cc \
+    src/ui/MissionElevationDisplay.cpp \
+    src/ui/GoogleElevationData.cpp \
+    src/comm/UASObject.cc \
+    src/comm/VehicleOverview.cc \
+    src/comm/RelPositionOverview.cc \
+    src/comm/AbsPositionOverview.cc \
+    src/comm/MissionOverview.cc \
+    src/ui/AP2DataPlot2DModel.cc \
+    src/ui/uas/PreFlightCalibrationDialog.cpp \
+    src/ui/configuration/RadioFlashWizard.cpp \
+    src/ui/GraphTreeWidgetItem.cc \
+    src/comm/LinkManagerFactory.cpp \
+    src/ui/VibrationMonitor.cpp \
+    src/ui/EKFMonitor.cpp \
+    src/Settings.cpp \
+    src/uas/APMFirmwareVersion.cpp
+
+MacBuild | WindowsBuild : contains(GOOGLEEARTH, enable) { #fix this to make sense ;)
+    message(Including support for Google Earth)
+    QT +=  webkit webkitwidgets
+    HEADERS +=  src/ui/map3D/QGCWebPage.h
+    SOURCES +=  src/ui/map3D/QGCWebPage.cc
+} else {
+    message(Skipping support for Google Earth)
+}
+
+contains(DEFINES, ENABLE_CAMRAVIEW){
+    message(Including support for Camera View)
+    HEADERS += src/ui/CameraView.h
+    SOURCES += src/ui/CameraView.cc
+} else {
+    message(Skipping support for Camera View)
+}
+
 
 OTHER_FILES += \
     qml/components/DigitalDisplay.qml \
     qml/components/StatusDisplay.qml \
     qml/components/ModeDisplay.qml \
-    qml/components/HeartbeatDisplay.qml
+    qml/components/HeartbeatDisplay.qml \
+    qml/PrimaryFlightDisplayQML.qml \
+    qml/components/RollPitchIndicator.qml \
+    qml/components/AltitudeIndicator.qml \
+    qml/components/SpeedIndicator.qml \
+    qml/components/CompassIndicator.qml \
+    qml/components/PitchIndicator.qml \
+    qml/components/StatusMessageIndicator.qml \
+    qml/components/InformationOverlayIndicator.qml \
 
 OTHER_FILES += \
     qml/ApmToolBar.qml \
@@ -815,7 +942,11 @@ OTHER_FILES += \
     qml/resources/apmplanner/toolbar/light_tuningconfig_icon.png \
     qml/resources/apmplanner/toolbar/flightdata.png \
     qml/resources/apmplanner/toolbar/disconnect.png \
-    qml/resources/apmplanner/toolbar/donate.png \
+    qml/resources/apmplanner/toolbar/donate.png
+
+OTHER_FILES += \
+    qml/VibrationMonitor.qml \
+    qml/EKFMonitor.qml
 
 # Command Line Tools
 OTHER_FILES += \
@@ -828,5 +959,8 @@ OTHER_FILES += \
 #sources.path        += $$DESTDIR/qml
 #target.path         += apmplanner2
 #INSTALLS            += sources target
+
+DISTFILES += \
+    qml/components/BarGauge.qml
 
 

@@ -47,7 +47,7 @@ class SerialConfigurationWindow : public QWidget
     Q_OBJECT
 
 public:
-    SerialConfigurationWindow(LinkInterface* link, QWidget *parent = 0, Qt::WindowFlags flags = Qt::Sheet);
+    SerialConfigurationWindow(int linkid, QWidget *parent = 0, Qt::WindowFlags flags = Qt::Sheet);
     ~SerialConfigurationWindow();
 
     QAction* getAction();
@@ -60,19 +60,25 @@ public slots:
     void setParityEven(bool accept);
     void setPortName(QString port);
     void setLinkName(QString name);
+    void setDataBits(int bits);
+    void setStopBits(int bits);
     void setupPortList();
     void setAdvancedSettings(bool visible);
+
 private slots:
     void connectionStateChanged(bool connected);
-protected:
-    void showEvent(QShowEvent* event);
-    void hideEvent(QHideEvent* event);
-    bool userConfigured; ///< Switch to detect if current values are user-selected and shouldn't be overriden
+    void linkChanged(int linkid);
+    void setBaudRateString(QString baud);
 
 private:
+    void showEvent(QShowEvent* event);
+    void hideEvent(QHideEvent* event);
+    SerialLinkInterface* getSerialInterfaceLink() const;
 
+private:
     Ui::serialSettings ui;
-    SerialLinkInterface* link;
+    int m_linkId;
+    bool userConfigured; ///< Switch to detect if current values are user-selected and shouldn't be overriden
     QAction* action;
     QTimer* portCheckTimer;
 

@@ -27,13 +27,13 @@ This file is part of the APM_PLANNER project
  *   @author Michael Carpenter <malcom2073@gmail.com>
  *
  */
-#include "QsLog.h"
+#include "logging.h"
 #include "ApmHardwareConfig.h"
 
 ApmHardwareConfig::ApmHardwareConfig(QWidget *parent) : AP2ConfigWidget(parent),
+    m_uas(NULL),
     m_paramDownloadState(none),
     m_paramDownloadCount(0),
-    m_uas(NULL),
     m_mandatory(false)
 {
     ui.setupUi(this);
@@ -48,7 +48,7 @@ ApmHardwareConfig::ApmHardwareConfig(QWidget *parent) : AP2ConfigWidget(parent),
     ui.arduPlaneLevelButton->setVisible(false);
     ui.radioCalibrateButton->setVisible(false);
     ui.batteryMonitorButton->setVisible(false);
-    ui.sonarButton->setVisible(false);
+    ui.rangeFinderButton->setVisible(false);
     ui.airspeedButton->setVisible(false);
     ui.opticalFlowButton->setVisible(false);
     ui.osdButton->setVisible(false);
@@ -111,10 +111,10 @@ ApmHardwareConfig::ApmHardwareConfig(QWidget *parent) : AP2ConfigWidget(parent),
     m_buttonToConfigWidgetMap[ui.batteryMonitorButton] = m_batteryConfig;
     connect(ui.batteryMonitorButton,SIGNAL(clicked()),this,SLOT(activateStackedWidget()));
 
-    m_sonarConfig = new SonarConfig(this);
+    m_sonarConfig = new RangeFinderConfig(this);
     ui.stackedWidget->addWidget(m_sonarConfig);
-    m_buttonToConfigWidgetMap[ui.sonarButton] = m_sonarConfig;
-    connect(ui.sonarButton,SIGNAL(clicked()),this,SLOT(activateStackedWidget()));
+    m_buttonToConfigWidgetMap[ui.rangeFinderButton] = m_sonarConfig;
+    connect(ui.rangeFinderButton,SIGNAL(clicked()),this,SLOT(activateStackedWidget()));
 
     m_airspeedConfig = new AirspeedConfig(this);
     ui.stackedWidget->addWidget(m_airspeedConfig);
@@ -237,20 +237,20 @@ void ApmHardwareConfig::uasDisconnected()
     ui.mandatoryHardware->setVisible(false);
     ui.mandatoryHardware->setChecked(false);
 
-    ui.frameTypeButton->setShown(false);
-    ui.sonarButton->setShown(false);
-    ui.compassButton->setShown(false);
-    ui.accelCalibrateButton->setShown(false);
-    ui.radioCalibrateButton->setShown(false);
+    ui.frameTypeButton->setVisible(false);
+    ui.rangeFinderButton->setVisible(false);
+    ui.compassButton->setVisible(false);
+    ui.accelCalibrateButton->setVisible(false);
+    ui.radioCalibrateButton->setVisible(false);
 
-    ui.flightModesButton->setShown(false);
-    ui.failSafeButton->setShown(false);
+    ui.flightModesButton->setVisible(false);
+    ui.failSafeButton->setVisible(false);
 
-    ui.batteryMonitorButton->setShown(false);
-    ui.airspeedButton->setShown(false);
-    ui.opticalFlowButton->setShown(false);
-    ui.osdButton->setShown(false);
-    ui.cameraGimbalButton->setShown(false);
+    ui.batteryMonitorButton->setVisible(false);
+    ui.airspeedButton->setVisible(false);
+    ui.opticalFlowButton->setVisible(false);
+    ui.osdButton->setVisible(false);
+    ui.cameraGimbalButton->setVisible(false);
 
     ui.radio3DRLargeButton->setVisible(true); // [SHOW 3DR RADIO]
     ui.antennaTrackerLargeButton->setVisible(false); // [HIDE Antenna Tracking]
@@ -327,72 +327,73 @@ void ApmHardwareConfig::toggleButtonsShown(bool show)
     if (m_uas->isMultirotor()){
         QLOG_DEBUG() << "Multirotor";
         // Buttons to disable
-        ui.airspeedButton->setShown(false);
+        ui.airspeedButton->setVisible(false);
 
         // Mandatory Options to show
-        ui.frameTypeButton->setShown(show);
-        ui.compassButton->setShown(show);
-        ui.accelCalibrateButton->setShown(show);
-        ui.radioCalibrateButton->setShown(show);
-        ui.flightModesButton->setShown(show);
-        ui.failSafeButton->setShown(show);
+        ui.frameTypeButton->setVisible(show);
+        ui.compassButton->setVisible(show);
+        ui.accelCalibrateButton->setVisible(show);
+        ui.radioCalibrateButton->setVisible(show);
+        ui.flightModesButton->setVisible(show);
+        ui.failSafeButton->setVisible(show);
 
         // Optional Options to Hide
-        ui.batteryMonitorButton->setShown(!show);
-        ui.opticalFlowButton->setShown(!show);
-        ui.osdButton->setShown(!show);
-        ui.cameraGimbalButton->setShown(!show);// [SHOW Camera Gimbal]
+        ui.batteryMonitorButton->setVisible(!show);
+        ui.opticalFlowButton->setVisible(!show);
+        ui.osdButton->setVisible(!show);
+        ui.cameraGimbalButton->setVisible(!show);// [SHOW Camera Gimbal]
 //        ui.antennaTrackerButton->setShown(!show);// [HIDE Antenna Tracking]
-        ui.sonarButton->setShown(!show);
+        ui.rangeFinderButton->setVisible(!show);
 
     } else if (m_uas->isFixedWing()){
         QLOG_DEBUG() << "FixedWing";
         // Buttons to disable
-        ui.frameTypeButton->setShown(false);
+        ui.frameTypeButton->setVisible(false);
 
         // Mandatory Options to show
-        ui.compassButton->setShown(show);
-        ui.accelCalibrateButton->setShown(show);
-        ui.radioCalibrateButton->setShown(show);
-        ui.flightModesButton->setShown(show);
-        ui.failSafeButton->setShown(show);
+        ui.compassButton->setVisible(show);
+        ui.accelCalibrateButton->setVisible(show);
+        ui.radioCalibrateButton->setVisible(show);
+        ui.flightModesButton->setVisible(show);
+        ui.failSafeButton->setVisible(show);
 
         // Optional Options to Hide
-        ui.batteryMonitorButton->setShown(!show);
-        ui.opticalFlowButton->setShown(!show);
-        ui.osdButton->setShown(!show);
-        ui.cameraGimbalButton->setShown(!show); // [SHOW Camera Gimbal]
+        ui.batteryMonitorButton->setVisible(!show);
+        ui.opticalFlowButton->setVisible(!show);
+        ui.osdButton->setVisible(!show);
+        ui.cameraGimbalButton->setVisible(!show); // [SHOW Camera Gimbal]
 //        ui.antennaTrackerButton->setShown(!show); // [HIDE Antenna Tracking]
-        ui.airspeedButton->setShown(!show);
+        ui.airspeedButton->setVisible(!show);
 
     } else {
         // Assume Ground Vehicle et al.
         QLOG_DEBUG() << "Ground Vehicle & Other";
         // Butons to disable
-        ui.frameTypeButton->setShown(false);
-        ui.airspeedButton->setShown(false);
+        ui.frameTypeButton->setVisible(false);
+        ui.airspeedButton->setVisible(false);
 
         // Mandatory Options to show
-        ui.compassButton->setShown(show);
-        ui.accelCalibrateButton->setShown(show);
-        ui.radioCalibrateButton->setShown(show);
-        ui.flightModesButton->setShown(show);
-        ui.failSafeButton->setShown(show);
+        ui.compassButton->setVisible(show);
+        ui.accelCalibrateButton->setVisible(show);
+        ui.radioCalibrateButton->setVisible(show);
+        ui.flightModesButton->setVisible(show);
+        ui.failSafeButton->setVisible(show);
 
         // Optional Options to Hide
 //        ui.radio3DRButton->setShown(!show); [HIDE 3DR RADIO]
-        ui.batteryMonitorButton->setShown(!show);
-        ui.opticalFlowButton->setShown(!show);
-        ui.osdButton->setShown(!show);
-        ui.cameraGimbalButton->setShown(!show); // [SHOW Camera Gimbal]
+        ui.batteryMonitorButton->setVisible(!show);
+        ui.opticalFlowButton->setVisible(!show);
+        ui.osdButton->setVisible(!show);
+        ui.cameraGimbalButton->setVisible(!show); // [SHOW Camera Gimbal]
 //        ui.antennaTrackerButton->setShown(!show); // [HIDE Antenna Tracking]
-        ui.sonarButton->setShown(!show);
+        ui.rangeFinderButton->setVisible(!show);
     }
 }
 
 void ApmHardwareConfig::parameterChanged(int uas, int component, int parameterCount, int parameterId,
                                          QString parameterName, QVariant value)
 {
+    Q_UNUSED(component)
 
     QString countString;
     // Create progress of downloading all parameters for UI
@@ -415,7 +416,7 @@ void ApmHardwareConfig::parameterChanged(int uas, int component, int parameterCo
 
         countString = QString::number(m_paramDownloadCount) + "/"
                         + QString::number(parameterCount);
-        QLOG_INFO() << "Global Param Progress Bar: " << countString
+        QLOG_TRACE() << "Global Param Progress Bar: " << countString
                      << "paramId:" << parameterId << "name:" << parameterName
                      << "paramValue:" << value;
         ui.globalParamProgressLabel->setText(countString);
@@ -428,7 +429,7 @@ void ApmHardwareConfig::parameterChanged(int uas, int component, int parameterCo
         m_paramDownloadCount++;
         countString = QString::number(m_paramDownloadCount) + "/"
                         + QString::number(parameterCount);
-        QLOG_INFO() << "Param Progress Bar: " << countString
+        QLOG_TRACE() << "Param Progress Bar: " << countString
                      << "paramId:" << parameterId << "name:" << parameterName
                      << "paramValue:" << value;
         ui.globalParamProgressLabel->setText(countString);

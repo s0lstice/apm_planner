@@ -31,15 +31,15 @@ This file is part of the QGROUNDCONTROL project
 
 #ifndef HDDISPLAY_H
 #define HDDISPLAY_H
+#include <cmath>
 
-#include <QtGui/QGraphicsView>
+#include <QtWidgets/QGraphicsView>
 #include <QColor>
 #include <QTimer>
 #include <QFontDatabase>
 #include <QMap>
 #include <QContextMenuEvent>
 #include <QPair>
-#include <cmath>
 
 #include "UASInterface.h"
 

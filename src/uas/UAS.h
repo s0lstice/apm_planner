@@ -39,7 +39,7 @@ This file is part of the QGROUNDCONTROL project
 #include "QGCHilLink.h"
 #include "QGCFlightGearLink.h"
 #include "QGCJSBSimLink.h"
-#include "QGCXPlaneLink.h"
+//#include "QGCXPlaneLink.h"
 
 /**
  * @brief A generic MAVLINK-connected MAV/UAV
@@ -53,11 +53,11 @@ class UAS : public UASInterface
 {
     Q_OBJECT
 public:
-    UAS(MAVLinkProtocol* protocol, int id = 0);
+    UAS(MAVLinkProtocol* protocol,int id = 0);
     ~UAS();
 
-    static const float lipoFull;  ///< 100% charged voltage
-    static const float lipoEmpty; ///< Discharged voltage
+    static const double lipoFull;  ///< 100% charged voltage
+    static const double lipoEmpty; ///< Discharged voltage
 
     /* MANAGEMENT */
 
@@ -90,9 +90,10 @@ public:
     /** @brief Get the status flag for the communication */
     int getCommunicationStatus() const;
     /** @brief Add one measurement and get low-passed voltage */
-    float filterVoltage(float value) const;
+    double filterVoltage(double value) const;
     /** @brief Get the links associated with this robot */
     QList<LinkInterface*>* getLinks();
+    QList<int> getLinkIdList();
 
     Q_PROPERTY(double localX READ getLocalX WRITE setLocalX NOTIFY localXChanged)
     Q_PROPERTY(double localY READ getLocalY WRITE setLocalY NOTIFY localYChanged)
@@ -106,7 +107,11 @@ public:
     Q_PROPERTY(double pitch READ getPitch WRITE setPitch NOTIFY pitchChanged)
     Q_PROPERTY(double yaw READ getYaw WRITE setYaw NOTIFY yawChanged)
     Q_PROPERTY(double distToWaypoint READ getDistToWaypoint WRITE setDistToWaypoint NOTIFY distToWaypointChanged)
+    Q_PROPERTY(double airSpeed READ getGroundSpeed WRITE setGroundSpeed NOTIFY airSpeedChanged)
     Q_PROPERTY(double groundSpeed READ getGroundSpeed WRITE setGroundSpeed NOTIFY groundSpeedChanged)
+    Q_PROPERTY(double bearingToWaypoint READ getBearingToWaypoint WRITE setBearingToWaypoint NOTIFY bearingToWaypointChanged)
+    Q_PROPERTY(double altitudeAMSL READ getAltitudeAMSL WRITE setAltitudeAMSL NOTIFY altitudeAMSLChanged)
+    Q_PROPERTY(double altitudeRelative READ getAltitudeRelative WRITE setAltitudeRelative NOTIFY altitudeRelativeChanged)
 
     void setGroundSpeed(double val)
     {
@@ -118,11 +123,18 @@ public:
     {
         return groundSpeed;
     }
-    Q_PROPERTY(double bearingToWaypoint READ getBearingToWaypoint WRITE setBearingToWaypoint NOTIFY bearingToWaypointChanged)
 
-    // dongfang: There is not only one altitude; there are at least (APM) GPS altitude, mix altitude and mix-altitude relative to home.
-    // I have made this property refer to the mix-altitude ASL as this is the one actually used in navigation by APM.
-    Q_PROPERTY(double altitude READ getAltitude WRITE setAltitude NOTIFY altitudeChanged)
+    void setAirSpeed(double val)
+    {
+        airSpeed = val;
+        emit airSpeedChanged(val,"airSpeed");
+        emit valueChanged(this->uasId,"airSpeed","m/s",QVariant(val),getUnixTime());
+    }
+
+    double getAirSpeed() const
+    {
+        return airSpeed;
+    }
 
     void setLocalX(double val)
     {
@@ -182,19 +194,31 @@ public:
         return longitude;
     }
 
-    void setAltitude(double val)
+    void setAltitudeAMSL(double val)
     {
-        altitude = val;
-        emit altitudeChanged(val, "altitude");
-        emit valueChanged(this->uasId,"altitude","m",QVariant(val),getUnixTime());
+        altitudeAMSL = val;
+        emit altitudeAMSLChanged(val, "altitudeAMSL");
+        emit valueChanged(this->uasId,"altitudeAMSL","m",QVariant(val),getUnixTime());
     }
 
-    double getAltitude() const
+    double getAltitudeAMSL() const
     {
-        return altitude;
+        return altitudeAMSL;
     }
 
-    void setSatelliteCount(int val)
+    void setAltitudeRelative(double val)
+    {
+        altitudeRelative = val;
+        emit altitudeRelativeChanged(val, "altitudeRelative");
+        emit valueChanged(this->uasId,"altitudeRelative","m",QVariant(val),getUnixTime());
+    }
+
+    double getAltitudeRelative() const
+    {
+        return altitudeRelative;
+    }
+
+    void setSatelliteCount(double val)
     {
         m_satelliteCount = val;
         emit satelliteCountChanged(val,"satelliteCount");
@@ -233,12 +257,16 @@ public:
     QString getGpsFixString()
     {
         switch(m_gps_fix){
+        case 5:
+            return "3D+RTK";
+        case 4:
+            return "3D+DGPS";
         case 3:
             return "3D";
         case 2:
             return "2D";
         case 1:
-            return "1";
+            return "NO FIX";
         default:
             return ".";
         }
@@ -270,7 +298,7 @@ public:
     {
         bearingToWaypoint = val;
         emit bearingToWaypointChanged(val,"bearingToWaypoint");
-        emit valueChanged(this->uasId,"bearingToWaypoint","m",QVariant(val),getUnixTime());
+        emit valueChanged(this->uasId,"bearingToWaypoint","deg",QVariant(val),getUnixTime());
     }
 
     double getBearingToWaypoint() const
@@ -385,15 +413,16 @@ public:
     friend class UASWaypointManager;
 
 protected: //COMMENTS FOR TEST UNIT
+    bool m_heartbeatsEnabled;
     /// LINK ID AND STATUS
     int uasId;                    ///< Unique system ID
     QMap<int, QString> components;///< IDs and names of all detected onboard components
     QList<LinkInterface*>* links; ///< List of links this UAS can be reached by
     QList<int> unknownPackets;    ///< Packet IDs which are unknown and have been received
-    MAVLinkProtocol* mavlink;     ///< Reference to the MAVLink instance
+    //MAVLinkProtocol* mavlink;     ///< Reference to the MAVLink instance
     CommStatus commStatus;        ///< Communication status
-    float receiveDropRate;        ///< Percentage of packets that were dropped on the MAV's receiving link (from GCS and other MAVs)
-    float sendDropRate;           ///< Percentage of packets that were not received from the MAV by the GCS
+    double receiveDropRate;        ///< Percentage of packets that were dropped on the MAV's receiving link (from GCS and other MAVs)
+    double sendDropRate;           ///< Percentage of packets that were not received from the MAV by the GCS
     quint64 lastHeartbeat;        ///< Time of the last heartbeat message
     QTimer* statusTimeout;        ///< Timer for various status timeouts
 
@@ -403,11 +432,15 @@ protected: //COMMENTS FOR TEST UNIT
     int airframe;                 ///< The airframe type
     int autopilot;                ///< Type of the Autopilot: -1: None, 0: Generic, 1: PIXHAWK, 2: SLUGS, 3: Ardupilot (up to 15 types), defined in MAV_AUTOPILOT_TYPE ENUM
     bool systemIsArmed;           ///< If the system is armed
-    uint8_t mode;                 ///< The current mode of the MAV
+    uint8_t base_mode;                 ///< The current mode of the MAV
     uint32_t custom_mode;         ///< The current mode of the MAV
     int status;                   ///< The current status of the MAV
     QString shortModeText;        ///< Short textual mode description
     QString shortStateText;       ///< Short textual state description
+    int systemId;                 ///< Currently connected mavlink system id
+    int componentId;              ///< Currently connected mavlink component id
+    int getSystemId() { return systemId; }
+    int getComponentId() { return componentId; }
 
     /// OUTPUT
     QList<double> actuatorValues;
@@ -421,19 +454,19 @@ protected: //COMMENTS FOR TEST UNIT
     /// BATTERY / ENERGY
     BatteryType batteryType;    ///< The battery type
     int cells;                  ///< Number of cells
-    float fullVoltage;          ///< Voltage of the fully charged battery (100%)
-    float emptyVoltage;         ///< Voltage of the empty battery (0%)
-    float startVoltage;         ///< Voltage at system start
-    float tickVoltage;          ///< Voltage where 0.1 V ticks are told
-    float lastTickVoltageValue; ///< The last voltage where a tick was announced
-    float tickLowpassVoltage;   ///< Lowpass-filtered voltage for the tick announcement
-    float warnVoltage;          ///< Voltage where QGC will start to warn about low battery
-    float warnLevelPercent;     ///< Warning level, in percent
+    double fullVoltage;          ///< Voltage of the fully charged battery (100%)
+    double emptyVoltage;         ///< Voltage of the empty battery (0%)
+    double startVoltage;         ///< Voltage at system start
+    double tickVoltage;          ///< Voltage where 0.1 V ticks are told
+    double lastTickVoltageValue; ///< The last voltage where a tick was announced
+    double tickLowpassVoltage;   ///< Lowpass-filtered voltage for the tick announcement
+    double warnVoltage;          ///< Voltage where QGC will start to warn about low battery
+    double warnLevelPercent;     ///< Warning level, in percent
     double currentVoltage;      ///< Voltage currently measured
-    float lpVoltage;            ///< Low-pass filtered voltage
+    double lpVoltage;            ///< Low-pass filtered voltage
     double currentCurrent;      ///< Battery current currently measured
     bool batteryRemainingEstimateEnabled; ///< If the estimate is enabled, QGC will try to estimate the remaining battery life
-    float chargeLevel;          ///< Charge level of battery, in percent
+    double chargeLevel;          ///< Charge level of battery, in percent
     int timeRemaining;          ///< Remaining time calculated based on previous and current
     bool lowBattAlarm;          ///< Switch if battery is low
 
@@ -443,15 +476,8 @@ protected: //COMMENTS FOR TEST UNIT
     quint64 onboardTimeOffset;
 
     /// MANUAL CONTROL
-    bool controlRollManual;     ///< status flag, true if roll is controlled manually
-    bool controlPitchManual;    ///< status flag, true if pitch is controlled manually
-    bool controlYawManual;      ///< status flag, true if yaw is controlled manually
-    bool controlThrustManual;   ///< status flag, true if thrust is controlled manually
-
-    double manualRollAngle;     ///< Roll angle set by human pilot (radians)
-    double manualPitchAngle;    ///< Pitch angle set by human pilot (radians)
-    double manualYawAngle;      ///< Yaw angle set by human pilot (radians)
-    double manualThrust;        ///< Thrust set by human pilot (radians)
+    bool manualControl;             ///< status flag, true if roll/pitch/yaw/thrust are controlled manually
+    bool overrideRC;                ///< status flag, true if RC overrides are in effect
 
     /// POSITION
     bool positionLock;          ///< Status if position information is available or not
@@ -464,7 +490,8 @@ protected: //COMMENTS FOR TEST UNIT
 
     double latitude;            ///< Global latitude as estimated by position estimator
     double longitude;           ///< Global longitude as estimated by position estimator
-    double altitude;            ///< Global altitude as estimated by position estimator
+    double altitudeAMSL;        ///< Global altitude as estimated by position estimator
+    double altitudeRelative;    ///< Altitude above home as estimated by position estimator
 
     int m_satelliteCount;       ///< Number of satellites visible to raw GPS
     double m_gps_hdop;          ///< GPS HDOP
@@ -482,7 +509,8 @@ protected: //COMMENTS FOR TEST UNIT
 
     /// WAYPOINT NAVIGATION
     double distToWaypoint;       ///< Distance to next waypoint
-    double groundSpeed;         ///< GPS Groundspeed
+    double airSpeed;             ///< Airspeed
+    double groundSpeed;          ///< Groundspeed
     double bearingToWaypoint;    ///< Bearing to next waypoint
     UASWaypointManager waypointManager;
 
@@ -507,6 +535,8 @@ protected: //COMMENTS FOR TEST UNIT
     QByteArray imageRecBuffer;  ///< Buffer for the incoming bytestream
     QImage image;               ///< Image data of last completely transmitted image
     quint64 imageStart;
+    bool blockHomePositionChanges;   ///< Block changes to the home position
+    bool receivedMode;          ///< True if mode was retrieved from current conenction to UAS
 
 #if defined(QGC_PROTOBUF_ENABLED) && defined(QGC_USE_PIXHAWK_MESSAGES)
     px::GLOverlay overlay;
@@ -539,12 +569,13 @@ protected: //COMMENTS FOR TEST UNIT
     QGCHilLink* simulation;         ///< Hardware in the loop simulation link
 
 public:
+    void setHeartbeatEnabled(bool enabled) { m_heartbeatsEnabled = enabled; }
     /** @brief Set the current battery type */
     void setBattery(BatteryType type, int cells);
     /** @brief Estimate how much flight time is remaining */
     int calculateTimeRemaining();
     /** @brief Get the current charge level */
-    float getChargeLevel();
+    double getChargeLevel();
     /** @brief Get the human-readable status message for this code */
     void getStatusForCode(int statusCode, QString& uasState, QString& stateDescription);
 
@@ -563,7 +594,10 @@ public:
     bool isAuto();
     /** @brief Check if vehicle is armed */
     bool isArmed() const { return systemIsArmed; }
+    /** @brief Check if vehicle is in HIL mode */
+    bool isHilEnabled() const { return hilEnabled; }
 
+    /** @brief Get reference to the waypoint manager **/
     UASWaypointManager* getWaypointManager() {
         return &waypointManager;
     }
@@ -571,6 +605,7 @@ public:
     QGCUASParamManager* getParamManager() const {
         return paramManager;
     }
+
     /** @brief Get the HIL simulation */
     QGCHilLink* getHILSimulation() const {
         return simulation;
@@ -581,6 +616,40 @@ public:
         paramManager = manager;
     }
     int getSystemType();
+
+    /**
+     * @brief Returns true for systems that can reverse. If the system has no control over position, it returns false as
+     * @return If the specified vehicle type can
+     */
+    bool systemCanReverse() const
+    {
+        switch(type)
+        {
+        case MAV_TYPE_GENERIC:
+        case MAV_TYPE_FIXED_WING:
+        case MAV_TYPE_ROCKET:
+        case MAV_TYPE_FLAPPING_WING:
+
+        // System types that don't have movement
+        case MAV_TYPE_ANTENNA_TRACKER:
+        case MAV_TYPE_GCS:
+        case MAV_TYPE_FREE_BALLOON:
+        default:
+            return false;
+        case MAV_TYPE_QUADROTOR:
+        case MAV_TYPE_COAXIAL:
+        case MAV_TYPE_HELICOPTER:
+        case MAV_TYPE_AIRSHIP:
+        case MAV_TYPE_GROUND_ROVER:
+        case MAV_TYPE_SURFACE_BOAT:
+        case MAV_TYPE_SUBMARINE:
+        case MAV_TYPE_HEXAROTOR:
+        case MAV_TYPE_OCTOROTOR:
+        case MAV_TYPE_TRICOPTER:
+            return true;
+        }
+    }
+
     QString getSystemTypeName()
     {
         switch(type)
@@ -695,14 +764,21 @@ public:
             break;
         }
     }
-
-    /** @brief Test for sub-group */
+	
+  	/** From UASInterface */
     bool isMultirotor();
+	bool isRotaryWing();
     bool isFixedWing();
     bool isGroundRover();
     bool isHelicopter();
 
 public slots:
+
+    void protocolStatusMessageRec(const QString& title, const QString& message);
+    void valueChangedRec(const int uasId, const QString& name, const QString& unit, const QVariant& value, const quint64 msec);
+    void textMessageReceivedRec(int uasid, int componentid, int severity, const QString& text);
+    void receiveLossChangedRec(int id,float value);
+
     /** @brief Set the autopilot type */
     void setAutopilotType(int apType)
     {
@@ -744,22 +820,28 @@ public slots:
     void home();
     /** @brief Order the robot to land **/
     void land();
+    /** @brief Order the robot to pair its receiver **/
+    void pairRX(int rxType, int rxSubType);
+
     void halt();
     void go();
 
     /** @brief Enable / disable HIL */
-    void enableHilFlightGear(bool enable, QString options);
+    void enableHilFlightGear(bool enable, QString options, bool sensorHil, QObject * configuration);
     void enableHilJSBSim(bool enable, QString options);
-    void enableHilXPlane(bool enable);
 
     /** @brief Send the full HIL state to the MAV */
     void sendHilState(quint64 time_us, float roll, float pitch, float yaw, float rollRotationRate,
                         float pitchRotationRate, float yawRotationRate, double lat, double lon, double alt,
-                        float vx, float vy, float vz, float xacc, float yacc, float zacc);
+                        float vx, float vy, float vz, float ind_airspeed, float true_airspeed, float xacc, float yacc, float zacc);
+
+    void sendHilGroundTruth(quint64 time_us, float roll, float pitch, float yaw, float rollRotationRate,
+                        float pitchRotationRate, float yawRotationRate, double lat, double lon, double alt,
+                        float vx, float vy, float vz, float ind_airspeed, float true_airspeed, float xacc, float yacc, float zacc);
 
     /** @brief RAW sensors for sensor HIL */
-    void sendHilSensors(quint64 time_us, float xacc, float yacc, float zacc, float rollRotationRate, float pitchRotationRate, float yawRotationRate,
-                                        float xmag, float ymag, float zmag, float abs_pressure, float diff_pressure, float pressure_alt, float temperature, quint16 fields_changed);
+    void sendHilSensors(quint64 time_us, float xacc, float yacc, float zacc, float rollspeed, float pitchspeed, float yawspeed,
+                        float xmag, float ymag, float zmag, float abs_pressure, float diff_pressure, float pressure_alt, float temperature, quint32 fields_changed);
 
     /**
      * @param time_us
@@ -773,7 +855,7 @@ public slots:
      * @param cog course over ground, in radians, -pi..pi
      * @param satellites
      */
-    void sendHilGps(quint64 time_us, double lat, double lon, double alt, int fix_type, float eph, float epv, float vel, float cog, int satellites);
+    void sendHilGps(quint64 time_us, double lat, double lon, double alt, int fix_type, float eph, float epv, float vel, float vn, float ve, float vd,  float cog, int satellites);
 
 
     /** @brief Places the UAV in Hardware-in-the-Loop simulation status **/
@@ -792,6 +874,9 @@ public slots:
     /** @brief Shut the system cleanly down. Will shut down any onboard computers **/
     void shutdown();
 
+    /** @brief Reboot the system**/
+    void reboot();
+
     /** @brief Set the target position for the robot to navigate to. */
     void setTargetPosition(float x, float y, float z, float yaw);
 
@@ -802,14 +887,25 @@ public slots:
     virtual void armSystem();
     /** @brief Disable the motors */
     virtual void disarmSystem();
+    /** @brief Toggle the armed state of the system. */
+    void toggleArmedState();
+    /**
+     * @brief Tell the UAS to switch into a completely-autonomous mode, so disable manual input.
+     */
+    void goAutonomous();
+    /**
+     * @brief Tell the UAS to switch to manual control. Stabilized attitude may simultaneously be engaged.
+     */
+    void goManual();
+    /**
+     * @brief Tell the UAS to switch between manual and autonomous control.
+     */
+    void toggleAutonomy();
 
     /** @brief Set the values for the manual control of the vehicle */
     void setManualControlCommands(double roll, double pitch, double yaw, double thrust, int xHat, int yHat, int buttons);
     /** @brief Receive a button pressed event from an input device, e.g. joystick */
     void receiveButton(int buttonIndex);
-
-    /** @brief Set the values for the 6dof manual control of the vehicle */
-    void setManual6DOFControlCommands(double x, double y, double z, double roll, double pitch, double yaw);
 
     /** @brief Add a link associated with this robot */
     void addLink(LinkInterface* link);
@@ -817,7 +913,7 @@ public slots:
     void removeLink(QObject* object);
 
     /** @brief Receive a message from one of the communication links. */
-    virtual void receiveMessage(LinkInterface* link, mavlink_message_t message);
+    void receiveMessage(LinkInterface* link, mavlink_message_t message);
 
 #ifdef QGC_PROTOBUF_ENABLED
     /** @brief Receive a message from one of the communication links. */
@@ -838,8 +934,11 @@ public slots:
     /** @brief Set current mode of operation, e.g. auto or manual */
     void setMode(int mode);
 
-    /** @brief Set current mode and custom_mode of operation, e.g. auto or manual */
-    void setMode(int mode, int custom_mode);
+    /** @brief Set current mode of operation, e.g. auto or manual, always uses the current arming status for safety reason */
+    void setMode(uint8_t newBaseMode, uint32_t newCustomMode);
+
+    /** @brief Set current mode of operation, e.g. auto or manual, does not check the arming status, for anything else than arming/disarming operations use setMode instead */
+    void setModeArm(uint8_t newBaseMode, uint32_t newCustomMode);
 
     /** @brief Request all parameters */
     void requestParameters();
@@ -850,7 +949,7 @@ public slots:
     void requestParameter(int component, int id);
 
     /** @brief Set a system parameter */
-    void setParameter(const int component, const QString& id, const QVariant& value);
+    void setParameter(const int compId, const QString& paramId, const QVariant& value);
 
     /** @brief Write parameters to permanent storage */
     void writeParametersToStorage();
@@ -886,20 +985,24 @@ public slots:
     /** @brief Add an offset in body frame to the setpoint */
     void setLocalPositionOffset(float x, float y, float z, float yaw);
 
-    void startRadioControlCalibration();
+    void startRadioControlCalibration(int param=1);
+    void endRadioControlCalibration();
     void startMagnetometerCalibration();
     void startGyroscopeCalibration();
     void startPressureCalibration();
+    void startCompassMotCalibration();
 
     void startDataRecording();
     void stopDataRecording();
     void deleteSettings();
-
+	
     // Log Download
     void logRequestList(uint16_t start, uint16_t end);
     void logRequestData(uint16_t id, uint32_t ofs, uint32_t count);
     void logEraseAll();
     void logRequestEnd();
+
+    void sendHeartbeat();
 
 signals:
     /** @brief The main/battery voltage has changed/was updated */
@@ -917,7 +1020,7 @@ signals:
     /** @brief A new camera image has arrived */
     void imageReady(UASInterface* uas);
     /** @brief HIL controls have changed */
-    void hilControlsChanged(uint64_t time, float rollAilerons, float pitchElevator, float yawRudder, float throttle, uint8_t systemMode, uint8_t custom_mode);
+    void hilControlsChanged(uint64_t time, float rollAilerons, float pitchElevator, float yawRudder, float throttle, uint8_t systemMode, uint8_t navMode);
     /** @brief HIL actuator outputs have changed */
     void hilActuatorsChanged(uint64_t time, float act1, float act2, float act3, float act4, float act5, float act6, float act7, float act8);
 
@@ -930,7 +1033,8 @@ signals:
     void localZChanged(double val,QString name);
     void longitudeChanged(double val,QString name);
     void latitudeChanged(double val,QString name);
-    void altitudeChanged(double val,QString name);
+    void altitudeAMSLChanged(double val,QString name);
+    void altitudeRelativeChanged(double val,QString name);
     void rollChanged(double val,QString name);
     void pitchChanged(double val,QString name);
     void yawChanged(double val,QString name);
@@ -939,11 +1043,9 @@ signals:
     void gpsFixChanged(int val, QString name);
     void distToWaypointChanged(double val,QString name);
     void groundSpeedChanged(double val, QString name);
+    void airSpeedChanged(double val, QString name);
     void bearingToWaypointChanged(double val,QString name);
 
-    //void primaryAltitudeChanged(UASInterface*, double altitude, quint64 usec);
-    //void gpsAltitudeChanged(UASInterface*, double altitude, quint64 usec);
-    //void velocityChanged_NED(UASInterface*, double vx, double vy, double vz, quint64 usec);
 protected:
     /** @brief Get the UNIX timestamp in milliseconds, enter microseconds */
     quint64 getUnixTime(quint64 time=0);
@@ -951,6 +1053,11 @@ protected:
     quint64 getUnixTimeFromMs(quint64 time);
     /** @brief Get the UNIX timestamp in milliseconds, ignore attitudeStamped mode */
     quint64 getUnixReferenceTime(quint64 time);
+
+    /** @brief convert Joystick input ([-1.0, +1.0]) to RC PPM value ([1000, 2000]) for channel */
+    uint16_t scaleJoystickToRC(double pct, int channel) const;
+
+    virtual void processParamValueMsg(mavlink_message_t& msg, const QString& paramName,const mavlink_param_value_t& rawValue, mavlink_param_union_t& paramValue);
 
     int componentID[256];
     bool componentMulti[256];
@@ -964,7 +1071,14 @@ protected:
     quint64 lastSendTimeGPS;     ///< Last HIL GPS message sent
     quint64 lastSendTimeSensors;
 
+    QList< QPair<int, QString> >  paramRequestQueue;
+
+    QTimer m_parameterSendTimer;
+
+
 protected slots:
+    void requestNextParamFromQueue();
+
     /** @brief Write settings to disk */
     void writeSettings();
     /** @brief Read settings from disk */

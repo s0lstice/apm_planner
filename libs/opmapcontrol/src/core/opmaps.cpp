@@ -39,7 +39,7 @@ namespace core {
     OPMaps::OPMaps():RetryLoadTile(2),useMemoryCache(true)
     {
         accessmode=AccessMode::ServerAndCache;
-        Language=LanguageType::PortuguesePortugal;
+        Language=LanguageType::English;
         LanguageStr=LanguageType().toShortString(Language);
         Cache::Instance();
 
@@ -118,7 +118,6 @@ namespace core {
                 connect(&network, SIGNAL(finished(QNetworkReply*)),
                         &q, SLOT(quit()));
                 connect(&tT, SIGNAL(timeout()), &q, SLOT(quit()));
-                network.setProxy(Proxy);
 #ifdef DEBUG_GMAPS
                 qDebug()<<"Try Tile from the Internet";
 #endif //DEBUG_GMAPS
@@ -141,7 +140,7 @@ namespace core {
                 case MapType::GoogleTerrain:
                 case MapType::GoogleHybrid:
                     {
-                        qheader.setRawHeader("Referrer", "http://maps.google.com/");
+                        qheader.setRawHeader("Referrer", "https://maps.google.com/");
                     }
                     break;
 
@@ -200,6 +199,11 @@ namespace core {
                         qheader.setRawHeader("Referrer", "http://maps.yandex.ru/");
                     }
                     break;
+                case MapType::Statkart_Topo2:
+                                    {
+                                        qheader.setRawHeader("Referrer", "http://www.norgeskart.no/");
+                                    }
+                                    break;
                 default:
                     break;
                 }
@@ -216,6 +220,9 @@ namespace core {
                 tT.stop();
                 if( (reply->error()!=QNetworkReply::NoError))
                 {
+#ifdef DEBUG_GMAPS
+                    qDebug() << " Download Tile Network error: " << reply->errorString();
+#endif
                     errorvars.lock();
                     ++diag.networkerrors;
                     errorvars.unlock();

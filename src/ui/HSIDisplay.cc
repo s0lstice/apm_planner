@@ -29,9 +29,9 @@ This file is part of the QGROUNDCONTROL project
  *
  */
 
-#include "QsLog.h"
-#include "UASManager.h"
 #include "HSIDisplay.h"
+#include "logging.h"
+#include "UASManager.h"
 #include "QGC.h"
 #include "Waypoint.h"
 #include "UASWaypointManager.h"
@@ -662,7 +662,7 @@ void HSIDisplay::mouseDoubleClickEvent(QMouseEvent * event)
 {
     if (event->type() == QMouseEvent::MouseButtonDblClick)
     {
-        QPointF p = screenToMetricBody(event->posF());
+        QPointF p = screenToMetricBody(event->pos());
         if (!directSending)
         {
             setBodySetpointCoordinateXY(p.x(), p.y());

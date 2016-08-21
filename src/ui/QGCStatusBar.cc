@@ -27,25 +27,21 @@ This file is part of the QGROUNDCONTROL project
 #include "QGCStatusBar.h"
 #include "UASManager.h"
 #include "MainWindow.h"
+#include <QFileDialog>
 
 QGCStatusBar::QGCStatusBar(QWidget *parent) :
     QStatusBar(parent),
     toggleLoggingButton(NULL),
     player(NULL),
     changed(true),
-    m_uas(NULL),
-    lastLogDirectory(QGC::MAVLinkLogDirectory())
+    lastLogDirectory(QGC::MAVLinkLogDirectory()),
+    m_uas(NULL)
 {
     setObjectName("QGC_STATUSBAR");
 
-    //toggleLoggingButton = new QPushButton("Logging", this);
-    //toggleLoggingButton->setCheckable(true);
-
-    //addPermanentWidget(toggleLoggingButton);
-
-    setStyleSheet("QStatusBar { border: 0px; border-bottom: 1px solid #101010; border-top: 1px solid #4F4F4F; background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #4B4B4B, stop:0.3 #404040, stop:0.34 #383838, stop:1 #181818); } ");
     connect(UASManager::instance(),SIGNAL(activeUASSet(UASInterface*)),this,SLOT(activeUASSet(UASInterface*)));
 }
+
 void QGCStatusBar::uasConnected()
 {
     if (player)
@@ -95,9 +91,12 @@ void QGCStatusBar::activeUASSet(UASInterface* uas)
     {
         if (!player->isPlayingLogFile())
         {
-            if (uas->getLinks()->at(0)->isConnected())
+            if (uas->getLinks()->size() > 0)
             {
-                this->setEnabled(false);
+                if (uas->getLinks()->at(0)->isConnected())
+                {
+                    this->setEnabled(false);
+                }
             }
         }
 
@@ -128,7 +127,7 @@ void QGCStatusBar::setLogPlayer(QGCMAVLinkLogPlayer* player)
 void QGCStatusBar::logging(bool checked)
 {
     // Stop logging in any case
-    MainWindow::instance()->getMAVLink()->stopLogging();
+   // MainWindow::instance()->getMAVLink()->stopLogging();
 
     if (!checked && player)
     {
@@ -170,7 +169,7 @@ void QGCStatusBar::logging(bool checked)
 		// Otherwise we're off and logging
         else
         {
-            MainWindow::instance()->getMAVLink()->startLogging(fileName);
+            //MainWindow::instance()->getMAVLink()->startLogging(fileName);
         }
     }
 }

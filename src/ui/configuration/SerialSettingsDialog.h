@@ -38,8 +38,9 @@ This file is part of the APM_PLANNER project
 
 #include <QDialog>
 #include <QComboBox>
-#include <qserialport.h>
+#include <QtSerialPort/qserialport.h>
 #include <QPointer>
+#include <QTimer>
 
 namespace Ui {
 class SettingsDialog;
@@ -49,7 +50,7 @@ class QIntValidator;
 
 class SerialSettings {
 public:
-    SerialSettings() : name(""),
+    SerialSettings() : name("none"),
         baudRate(115200),
         dataBits(QSerialPort::Data8),
         parity(QSerialPort::NoParity),
@@ -94,7 +95,7 @@ private:
     Ui::SettingsDialog *ui;
     SerialSettings m_currentSettings;
     QIntValidator *m_intValidator;
-    QPointer<QTimer> m_timer;
+    QTimer m_timer;
 };
 
 #endif // SETTINGSDIALOG_H

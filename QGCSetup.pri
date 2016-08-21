@@ -23,177 +23,41 @@ QMAKE_POST_LINK += $$quote(echo "Copying files")
 # Copy the application resources to the associated place alongside the application
 #
 
-COPY_RESOURCE_LIST = \
-    $$BASEDIR/files \
-    $$BASEDIR/qml \
-    $$BASEDIR/data
-    
-WindowsBuild {
-	DESTDIR_COPY_RESOURCE_LIST = $$replace(DESTDIR,"/","\\")
-    COPY_RESOURCE_LIST = $$replace(COPY_RESOURCE_LIST, "/","\\")
-    CONCATCMD = $$escape_expand(\\n)
-}
+# Dev note: Used to move "files","data","sik_uploader", and "qml".
+# Fow now only the last two
 
 LinuxBuild {
     DESTDIR_COPY_RESOURCE_LIST = $$DESTDIR
-    CONCATCMD = &&
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR $$BASEDIR/qml $$DESTDIR_COPY_RESOURCE_LIST
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR $$BASEDIR/sik_uploader $$DESTDIR_COPY_RESOURCE_LIST
 }
 
 MacBuild {
     DESTDIR_COPY_RESOURCE_LIST = $$DESTDIR/$${TARGET}.app/Contents/MacOS
-    CONCATCMD = &&
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR $$BASEDIR/qml $$DESTDIR_COPY_RESOURCE_LIST
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR $$BASEDIR/sik_uploader $$DESTDIR_COPY_RESOURCE_LIST
 }
-    
-for(COPY_DIR, COPY_RESOURCE_LIST):QMAKE_POST_LINK += $$CONCATCMD $$QMAKE_COPY_DIR $${COPY_DIR} $$DESTDIR_COPY_RESOURCE_LIST
+
+WindowsCrossBuild {
+    DESTDIR_COPY_RESOURCE_LIST = $$DESTDIR
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR $$BASEDIR/qml $$DESTDIR_COPY_RESOURCE_LIST
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR $$BASEDIR/sik_uploader $$DESTDIR_COPY_RESOURCE_LIST
+}
+
+# Windows version of QMAKE_COPY_DIR of course doesn't work the same as Mac/Linux. It will only
+# copy the contents of the source directory. It doesn't create the top level source directory
+# in the target.
+WindowsBuild {
+    # Make sure to keep both side of this if using the same set of directories
+    DESTDIR_COPY_RESOURCE_LIST = $$replace(DESTDIR,"/","\\")
+    BASEDIR_COPY_RESOURCE_LIST = $$replace(BASEDIR,"/","\\")
+    QMAKE_POST_LINK += $$escape_expand(\\n) $$QMAKE_COPY_DIR \"$$BASEDIR_COPY_RESOURCE_LIST\\qml\" \"$$DESTDIR_COPY_RESOURCE_LIST\\qml\"
+    QMAKE_POST_LINK += $$escape_expand(\\n) $$QMAKE_COPY_DIR \"$$BASEDIR_COPY_RESOURCE_LIST\\sik_uploader\" \"$$DESTDIR_COPY_RESOURCE_LIST\\sik_uploader\"
+}
 
 #
 # Perform platform specific setup
 #
-
-MacBuild {
-	# Copy non-standard libraries and frameworks into app package
-    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR $$BASEDIR/libs/lib/mac64/lib $$DESTDIR/$${TARGET}.app/Contents/libs
-    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR -L $$BASEDIR/libs/lib/Frameworks $$DESTDIR/$${TARGET}.app/Contents/Frameworks
-
-	# Fix library paths inside executable
-
-    INSTALL_NAME_TARGET = $$DESTDIR/$${TARGET}.app/Contents/MacOS/$${TARGET}
-    INSTALL_NAME_LIB_LIST = \
-        libOpenThreads.dylib \
-        libosg.dylib \
-        libosgViewer.dylib \
-        libosgGA.dylib \
-        libosgDB.dylib \
-        libosgText.dylib \
-        libosgWidget.dylib
-    for(INSTALL_NAME_LIB, INSTALL_NAME_LIB_LIST) {
-        QMAKE_POST_LINK += && install_name_tool -change $$INSTALL_NAME_LIB "@executable_path/../libs/$${INSTALL_NAME_LIB}" $$INSTALL_NAME_TARGET
-    }
-
-	# Fix library paths within libraries (inter-library dependencies)
-
-	# OSG GA LIBRARY
-    INSTALL_NAME_TARGET = $$DESTDIR/$${TARGET}.app/Contents/libs/libosgGA.dylib
-    INSTALL_NAME_LIB_LIST = \
-        libOpenThreads.dylib \
-        libosg.dylib \
-        libosgGA.dylib \
-        libosgDB.dylib \
-        libosgUtil.dylib
-    for(INSTALL_NAME_LIB, INSTALL_NAME_LIB_LIST) {
-        QMAKE_POST_LINK += && install_name_tool -change $$INSTALL_NAME_LIB "@executable_path/../libs/$${INSTALL_NAME_LIB}" $$INSTALL_NAME_TARGET
-    }
-
-	# OSG DB LIBRARY
-    INSTALL_NAME_TARGET = $$DESTDIR/$${TARGET}.app/Contents/libs/libosgDB.dylib
-    INSTALL_NAME_LIB_LIST = \
-        libOpenThreads.dylib \
-        libosg.dylib \
-        libosgDB.dylib \
-        libosgUtil.dylib
-    for(INSTALL_NAME_LIB, INSTALL_NAME_LIB_LIST) {
-        QMAKE_POST_LINK += && install_name_tool -change $$INSTALL_NAME_LIB "@executable_path/../libs/$${INSTALL_NAME_LIB}" $$INSTALL_NAME_TARGET
-    }
-
-	# OSG TEXT LIBRARY
-    INSTALL_NAME_TARGET = $$DESTDIR/$${TARGET}.app/Contents/libs/libosgText.dylib
-    INSTALL_NAME_LIB_LIST = \
-        libOpenThreads.dylib \
-        libosg.dylib \
-        libosgDB.dylib \
-        libosgUtil.dylib \
-        libosgText.dylib
-    for(INSTALL_NAME_LIB, INSTALL_NAME_LIB_LIST) {
-        QMAKE_POST_LINK += && install_name_tool -change $$INSTALL_NAME_LIB "@executable_path/../libs/$${INSTALL_NAME_LIB}" $$INSTALL_NAME_TARGET
-    }
-
-	# OSG UTIL LIBRARY
-    INSTALL_NAME_TARGET = $$DESTDIR/$${TARGET}.app/Contents/libs/libosgUtil.dylib
-    INSTALL_NAME_LIB_LIST = \
-        libOpenThreads.dylib \
-        libosg.dylib
-    for(INSTALL_NAME_LIB, INSTALL_NAME_LIB_LIST) {
-        QMAKE_POST_LINK += && install_name_tool -change $$INSTALL_NAME_LIB "@executable_path/../libs/$${INSTALL_NAME_LIB}" $$INSTALL_NAME_TARGET
-    }
-
-
-	# OSG VIEWER LIBRARY
-    INSTALL_NAME_TARGET = $$DESTDIR/$${TARGET}.app/Contents/libs/libosgViewer.dylib
-    INSTALL_NAME_LIB_LIST = \
-        libOpenThreads.dylib \
-        libosg.dylib \
-        libosgGA.dylib \
-        libosgDB.dylib \
-        libosgUtil.dylib \
-        libosgText.dylib
-    for(INSTALL_NAME_LIB, INSTALL_NAME_LIB_LIST) {
-        QMAKE_POST_LINK += && install_name_tool -change $$INSTALL_NAME_LIB "@executable_path/../libs/$${INSTALL_NAME_LIB}" $$INSTALL_NAME_TARGET
-    }
-
-	# OSG WIDGET LIBRARY
-    INSTALL_NAME_TARGET = $$DESTDIR/$${TARGET}.app/Contents/libs/libosgWidget.dylib
-    INSTALL_NAME_LIB_LIST = \
-        libOpenThreads.dylib \
-        libosg.dylib \
-        libosgGA.dylib \
-        libosgDB.dylib \
-        libosgUtil.dylib \
-        libosgText.dylib \
-        libosgViewer.dylib
-    for(INSTALL_NAME_LIB, INSTALL_NAME_LIB_LIST) {
-        QMAKE_POST_LINK += && install_name_tool -change $$INSTALL_NAME_LIB "@executable_path/../libs/$${INSTALL_NAME_LIB}" $$INSTALL_NAME_TARGET
-    }
-
-	# CORE OSG LIBRARY
-    QMAKE_POST_LINK += && install_name_tool -change libOpenThreads.dylib "@executable_path/../libs/libOpenThreads.dylib" $$DESTDIR/$${TARGET}.app/Contents/libs/libosg.dylib
-
-    # SDL Framework
-    QMAKE_POST_LINK += && install_name_tool -change "@rpath/SDL.framework/Versions/A/SDL" "@executable_path/../Frameworks/SDL.framework/Versions/A/SDL" $$DESTDIR/$${TARGET}.app/Contents/MacOS/$${TARGET}
-
-}
-
-WindowsBuild {
-	# Copy dependencies
-	BASEDIR_WIN = $$replace(BASEDIR,"/","\\")
-	DESTDIR_WIN = $$replace(DESTDIR,"/","\\")
-
-    QMAKE_POST_LINK += $$escape_expand(\\n) $$quote($$QMAKE_COPY_DIR "$$(QTDIR)\\plugins" "$$DESTDIR_WIN")
-
-    COPY_FILE_DESTDIR = $$DESTDIR_WIN
-	DebugBuild: DLL_QT_DEBUGCHAR = "d"
-    ReleaseBuild: DLL_QT_DEBUGCHAR = ""
-    COPY_FILE_LIST = \
-        $$BASEDIR_WIN\\libs\\lib\\sdl\\win32\\SDL.dll \
-        $$BASEDIR_WIN\\libs\\thirdParty\\libxbee\\lib\\libxbee.dll \
-        $$(QTDIR)\\bin\\phonon$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtCore$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtGui$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtMultimedia$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtNetwork$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtOpenGL$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtSql$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtSvg$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtTest$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtWebKit$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtXml$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtXmlPatterns$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtDeclarative$${DLL_QT_DEBUGCHAR}4.dll \
-        $$(QTDIR)\\bin\\QtScript$${DLL_QT_DEBUGCHAR}4.dll
-    for(COPY_FILE, COPY_FILE_LIST) {
-        QMAKE_POST_LINK += $$escape_expand(\\n) $$quote($$QMAKE_COPY "$$COPY_FILE" "$$COPY_FILE_DESTDIR")
-    }
-
-	ReleaseBuild {
-		QMAKE_POST_LINK += $$escape_expand(\\n) $$quote(del /F "$$DESTDIR_WIN\\$${TARGET}.exp")
-
-		# Copy Visual Studio DLLs
-		# Note that this is only done for release because the debugging versions of these DLLs cannot be redistributed.
-		# I'm not certain of the path for VS2008, so this only works for VS2010.
-		win32-msvc2010 {
-			QMAKE_POST_LINK += $$escape_expand(\\n) $$quote(xcopy /D /Y "\"C:\\Program Files \(x86\)\\Microsoft Visual Studio 10.0\\VC\\redist\\x86\\Microsoft.VC100.CRT\\*.dll\""  "$$DESTDIR_WIN\\")
-		}
-	}
-}
 
 LinuxBuild {
         #Installer section
@@ -203,9 +67,12 @@ LinuxBuild {
         DEFINES += DATADIR=\\\"$$DATADIR\\\" PKGDATADIR=\\\"$$PKGDATADIR\\\"
 
         #MAKE INSTALL - copy files
-        INSTALLS += target datafiles desktopLink menuLink permFolders permFiles
+        INSTALLS += target radioup datafiles desktopLink menuLink
 
         target.path =$$BINDIR
+
+        radioup.path = $$BINDIR
+        radioup.files += $$BASEDIR/sik_uploader
 
         datafiles.path = $$DATADIR/APMPlanner2
         datafiles.files += $$BASEDIR/files
@@ -223,4 +90,80 @@ LinuxBuild {
         desktopLink.files += $$BASEDIR/debian/apmplanner2
         menuLink.path = $$DATADIR/applications
         menuLink.files += $$BASEDIR/debian/apmplanner2.desktop
+}
+
+MacBuild {
+    # Copy libraries and frameworks into app package
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR -L $$BASEDIR/libs/lib/Frameworks $$DESTDIR/$${TARGET}.app/Contents/Frameworks
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR -L $$[QT_INSTALL_PREFIX]/qml/QtQuick $$DESTDIR/$${TARGET}.app/Contents/MacOS/qml/QtQuick
+    QMAKE_POST_LINK += && $$QMAKE_COPY_DIR -L $$[QT_INSTALL_PREFIX]/qml/QtQuick.2 $$DESTDIR/$${TARGET}.app/Contents/MacOS/qml/QtQuick.2
+
+    # SDL Framework
+    QMAKE_POST_LINK += && install_name_tool -change "@rpath/SDL2.framework/Versions/A/SDL2" "@executable_path/../Frameworks/SDL2.framework/Versions/A/SDL2" $$DESTDIR/$${TARGET}.app/Contents/MacOS/$${TARGET}
+}
+
+WindowsCrossBuild {
+
+    # Copy dependencies
+    DebugBuild: DLL_QT_DEBUGCHAR = "d"
+    ReleaseBuild: DLL_QT_DEBUGCHAR = ""
+
+    COPY_FILE_LIST = \
+        $$BASEDIR/libs/lib/sdl/win32/SDL2.dll \
+        $$BASEDIR/libs/thirdParty/libxbee/lib/libxbee.dll \
+        $$[QT_INSTALL_PREFIX]/bin/libgcc_s_dw2-1.dll \
+        $$[QT_INSTALL_PREFIX]/bin/libwinpthread-1.dll \
+        $$[QT_INSTALL_PREFIX]/bin/libstdc++-6.dll
+
+    for(COPY_FILE, COPY_FILE_LIST) {
+        QMAKE_POST_LINK += && $$QMAKE_COPY $$COPY_FILE $$DESTDIR_COPY_RESOURCE_LIST
+    }
+
+    DEPLOY_TARGET = $$DESTDIR/$${TARGET}.exe
+    QMAKE_POST_LINK += && windeployqt --no-compiler-runtime --qmldir=$${BASEDIR}/qml $${DEPLOY_TARGET}
+}
+
+WindowsBuild {
+
+    BASEDIR_WIN = $$replace(BASEDIR,"/","\\")
+    DESTDIR_WIN = $$replace(DESTDIR,"/","\\")
+
+    # Copy dependencies
+    DebugBuild: DLL_QT_DEBUGCHAR = "d"
+    ReleaseBuild: DLL_QT_DEBUGCHAR = ""
+
+    COPY_FILE_LIST = \
+        $$BASEDIR_WIN\\libs\\thirdParty\\libxbee\\lib\\libxbee.dll \
+
+    contains(QT_ARCH, i386) {
+        COPY_FILE_LIST += $$BASEDIR_WIN\\libs\\lib\\sdl\\msvc\\lib\\x86\\SDL2.dll
+    }else {
+        COPY_FILE_LIST += $$BASEDIR_WIN\\libs\\lib\\sdl\\msvc\\lib\\x64\\SDL2.dll
+    }
+
+    for(COPY_FILE, COPY_FILE_LIST) {
+        QMAKE_POST_LINK += $$escape_expand(\\n) $$quote($$QMAKE_COPY "$$COPY_FILE" "$$DESTDIR_WIN")
+    }
+
+    ReleaseBuild {
+        # Copy Visual Studio DLLs
+        # Note that this is only done for release because the debugging versions of these DLLs cannot be redistributed.
+        win32-msvc2010 {
+                QMAKE_POST_LINK += $$escape_expand(\\n) $$QMAKE_COPY \"C:\\Windows\\System32\\msvcp100.dll\"  \"$$DESTDIR_WIN\"
+                QMAKE_POST_LINK += $$escape_expand(\\n) $$QMAKE_COPY \"C:\\Windows\\System32\\msvcr100.dll\"  \"$$DESTDIR_WIN\"
+        }
+        else:win32-msvc2012 {
+                QMAKE_POST_LINK += $$escape_expand(\\n) $$QMAKE_COPY \"C:\\Windows\\System32\\msvcp110.dll\"  \"$$DESTDIR_WIN\"
+                QMAKE_POST_LINK += $$escape_expand(\\n) $$QMAKE_COPY \"C:\\Windows\\System32\\msvcr110.dll\"  \"$$DESTDIR_WIN\"
+        }
+        else:win32-msvc2013 {
+                QMAKE_POST_LINK += $$escape_expand(\\n) $$QMAKE_COPY \"C:\\Windows\\System32\\msvcp120.dll\"  \"$$DESTDIR_WIN\"
+                QMAKE_POST_LINK += $$escape_expand(\\n) $$QMAKE_COPY \"C:\\Windows\\System32\\msvcr120.dll\"  \"$$DESTDIR_WIN\"
+        }
+        else {
+                error("Visual studio version not supported, installation cannot be completed.")
+        }
+    }
+    DEPLOY_TARGET = $$shell_quote($$shell_path($$DESTDIR_WIN\\$${TARGET}.exe))
+    QMAKE_POST_LINK += $$escape_expand(\\n) windeployqt --no-compiler-runtime --qmldir=$${BASEDIR_WIN}\\qml $${DEPLOY_TARGET}
 }

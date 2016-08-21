@@ -1,35 +1,35 @@
-APM Planner
+APM Planner 2.0
+===============
 
-Project:
-http://github.com/diydrones/apm_planner
+**Support:**
+[ardupilot.com Support Forum for APM Planner 2.0](http://ardupilot.com/forum/viewtopic.php?f=82)
 
-Files:
-https://github.com/diydrones/apm_planner
+Support is handled in the forum, we keep issues here known problems and enhancements
 
-Credits:
+**Developer Chat:** https://gitter.im/diydrones/apm_planner
+
+[![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/diydrones/apm_planner?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
+**Credits:**
 http://planner2.ardupilot.com/credits-and-contributors/
 
+[Waffle.io](https://waffle.io/diydrones/apm_planner) Progress Graph
+
+[![Throughput Graph](https://graphs.waffle.io/diydrones/apm_planner/throughput.svg)](https://waffle.io/diydrones/apm_planner/metrics)
 
 Documentation
 =============
 see http://planner2.ardupilot.com
-
 
 Mac OS X
 ========
 
 To build on Mac OS X (10.6 or later):
 
-Install SDL
------------
-1) Download SDL from:  <http://www.libsdl.org/release/SDL-1.2.14.dmg>
-
-2) From the SDL disk image, copy the `sdl.framework` bundle to `/Library/Frameworks` directory (if you are not an admin copy to `~/Library/Frameworks`)
-
 Install QT
 -----------
-1) Download Qt 4.8.x (Does not currently work with Qt5.x)
-   - you can verify the version by typing 'qmake -v' and it should report Qt 4.8.x as the version. 
+1) Download Qt 5.4.2 or greater (Does not work with Qt4.x)
+   - you can verify the version by typing 'qmake -v' and it should report Qt 5.4.2 or greater as the version. 
 
 2) Double click the package installer
 
@@ -45,16 +45,34 @@ Build APM Planner
 Linux 
 =====
 
-Building on Linux (tested against Ubuntu 13.10):
+Building on Linux (tested against Ubuntu 14.04 LTS):
+(Needs update to use Qt5.4.2, 5.2.1 doesn't work anymore)
 
-1) Install the required packages:
+(**NOTE:** There is an error in 14.04LTS with libxcb crashing sometimes, try this [fix](https://gist.github.com/slimsag/a26d838ccc4480ce21bc))
+
+1) Install the required packages: 
+
+Be sure to run apt-get update first
 
 ```
-sudo apt-get install phonon libqt4-dev libqt4-opengl-dev \
- libphonon-dev libphonon4 phonon-backend-gstreamer \
- qtcreator libsdl1.2-dev libflite1 flite1-dev build-essential \
- libopenscenegraph-dev libssl-dev libqt4-opengl-dev libudev-dev \
- libsndfile1-dev  
+sudo apt-get update
+sudo apt-get install qt5-qmake qt5-default \
+  qtscript5-dev libqt5webkit5-dev libqt5serialport5-dev \
+  libqt5svg5-dev qtdeclarative5-qtquick2-plugin
+sudo apt-get install git libsdl1.2-dev  libsndfile-dev \
+  flite1-dev libssl-dev libudev-dev libsdl2-dev
+```
+
+In Fedora (tested against Fedora 21), use:
+
+```
+sudo yum update
+sudo yum install qt-devel qt5-qtscript-devel \
+  qt5-qtwebkit-devel qt5-qtserialport-devel qt5-qtsvg-devel \
+  qt5-qtdeclarative-devel qt5-qtquick1-devel
+
+sudo yum install SDL-devel libsndfile-devel \
+  flite-devel openssl-devel libudev-devel SDL2-devel
 ```
 
 2) Clone the repository in your workspace:
@@ -68,11 +86,9 @@ git clone https://github.com/diydrones/apm_planner
 
 ```
 cd ~/workspace/apm_planner
-qmake-qt4 qgroundcontrol.pro
+qmake qgroundcontrol.pro
 make
 ```
-
-Or try `qmake qgroundcontrol.pro` if the `qmake-qt4` command doesn't exist on your version of Ubuntu. This will only work if the Qt version install on your machine is Qt4.8.x, this can be checked using `qmake -v'
 
 4) Run APM Planner:
 
@@ -83,34 +99,97 @@ Or try `qmake qgroundcontrol.pro` if the `qmake-qt4` command doesn't exist on yo
 5) Permanent installation (optional, if you'd like to install APM Planner in a fixed location)
  
 There are two ways to do this:
-a) You can build a .deb using ```scripts/LinuxBuildPackage.sh```, and then install the deb via ```dpkg -i ~/Documents/APMPlanner2-$NOW.deb``` (where $NOW is today's date). This should add it to your launcher too.
 
-b) Alternatively, run ```sudo make install```. This will place the binary in your /bin/ folder and corresponding files in /share/.
+a) Using Debuild:
+```
+cd ~/workspace/apm_planner
+debuild -us -uc -d
+```
+Then install the deb via 
+```
+dpkg -i ~/workspace/apmplanner2_2.0.XX_YYYY.deb
+```
+Where XX is the version number, and YYY is your architecture. This method should add it to your launcher too.
+
+If it does not install due to dependancies, you can resolve them with
+```
+sudo apt-get install -f
+````
+Then attempt to install again.
+
+b) Using make:
+```
+cd ~/workspace/apm_planner
+sudo make install
+```
+This will place the binary in your /bin/ folder and corresponding files in /share/
 
 Windows
 =======
 
-GNU GCC / MINGW IS UNTESTED, COULD WORK
-VISUAL STUDIO 2008 / 2010 EXPRESS EDITION IS FREE!
+To build on Windows there are two options:
+* Option 1: Visual Studio 2013 native compile
+    * Download and install [Visual Studio 2013 express](http://www.visualstudio.com/downloads/download-visual-studio-vs#d-express-windows-desktop)
+* Option 2: MinGW cross-compile
 
-Steps for Visual Studio 2008 / 2010:
+Install Qt with the [online Qt installer](http://www.qt.io/download-open-source): 
+* You will be presented with a list of Qt versions and compiler options to install
+* You can install mulitple versions and compilers beside one another and choose which to use later 
+* Select any one (or mulitple) of the following options, 
+	* Qt 5.5 MSVC2013 32-bit
+	* Qt 5.5 MSVC2013 64-bit
+	* Qt 5.5 MinGW 4.9.2 32-bit (also select the same version of MinGW under Tools)
 
-Windows XP/7:
+Configure QtCreator:
+* The installer is pretty smart but it's good to double check everything was setup corretly
+* Start QtCreator
+    * Click on the *Tools* menu item then *Options*
+    * Select *Build & Run* on the left hand side
+    * Look at the *Compilers* tab
+        * Under *Auto-detected* should be a list of compilers installed, such as:
+            * Microsoft Visual C++ Compiler 12.0 (x86)
+            * Microsoft Visual C++ Compiler 12.0 (amd64)
+            * MinGW 4.9.2 32bit
+        * If using MSVC there will be a few others listed as well but that is normal
+    * Look at the *Qt Versions* Tab:
+        * Under *Auto-detected* should be a list of the Qt versions you installed earlier:
+		    * Qt 5.5.1 MSVC2013 32bit
+		    * Qt 5.5.1 MSVC2013 32bit
+		    * Qt 5.5.1 MinGW 32bit
+		* If your desired Qt versions is not listed, or you installed one after the initial setup:
+			* Click Add
+			* Find the qmake.exe for the version you want
+			    * For example: c:/Qt/5.5/msvc2013/bin/qmake.exe
+			    * For example: c:/Qt/5.5/mingw492_32/bin/qmake.exe
+			* Click Apply
+    * Look under the *Kits* tab:
+        * Under *Auto-detected* should be a list of the appropriate kits:
+            * Desktop Qt 5.5.1 MSVC2013 32bit
+            * Desktop Qt 5.5.1 MSVC2013 63bit
+            * Desktop Qt 5.5.1 MinGB 32bit
+		* If a kit with your desired Qt versions and/or compiler is not listed, or you installed a new Qt version or compiler after the initial setup:
+			* Click *Add*, give it a nice name (like Qt 5.5.1 MSVC 32bit)
+			* Select the desired compiler from the drop down
+			* Select the Qt version (with matching compiler) from the drop down
+			* Click Apply
+    - Click *Ok* at the bottom of the window
+* QtCreator is now configured for fun
 
-1) Download and install the Qt libraries for Windows from https://qt.nokia.com/downloads/ (the Visual Studio 2008 or 2010 version as appropriate)
+Build APM Planner 2.0:
+* Start QtCreator (if not already)
+* Click on *File* then *Open File or Project*
+* Find qgroundcontrol.pro, then click *Open*
+    * The first time will ask you to configure project
+    * Select the desired version (same list of Kits from above) 
+    * Click *Configure Project*
+* Go to *Projects* tab on the left hand side
+    * Select the "Shadow Build" checkbox
+    * Browse to a location where you want the application to build to
+* From the *Build* drop down select *Build Project qgroundcontrol* (or Ctrl+B)
+* Run the generated apmplanner2.exe and enjoy!
 
-2) Download and install Visual Studio 2008 or 2010 Express Edition (free) from https://www.microsoft.com/visualstudio. If using Visual Studio 2010, make sure you are running at least SP1. There is a linking error you'll encounter otherwise that will prevent compilation.
-
-3) Go to the QGroundControl folder and then to thirdParty/libxbee and build it following the instructions in win32.README
-
-4) Open the Qt Command Prompt program (should be in the Start Menu), navigate to the source folder of QGroundControl and create the Visual Studio project by typing:
-
-`qmake -tp vc qgroundcontrol.pro`
-
-5) Now start Visual Studio and load the qgroundcontrol.vcproj if using Visual Studio 2008 or qgroundcontrol.vcxproj if using Visual Studio 2010
-
-6) Compile and edit in Visual Studio. If you need to add new files, add them to qgroundcontrol.pro and re-run `qmake -tp vc qgroundcontrol.pro`
-
+Installing this compiled version: 
+* To Do
 
 Repository Layout (2014-3-28: out-of-date, needs to be fixed)
 =================

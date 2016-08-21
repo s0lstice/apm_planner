@@ -7,13 +7,13 @@
     <x>0</x>
     <y>0</y>
     <width>869</width>
-    <height>799</height>
+    <height>867</height>
    </rect>
   </property>
   <property name="maximumSize">
    <size>
     <width>869</width>
-    <height>799</height>
+    <height>900</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -147,33 +147,42 @@
                   <item row="2" column="3">
                    <widget class="QSpinBox" name="tiltAngleMinSpinBox">
                     <property name="minimum">
-                     <number>-100</number>
+                     <number>-90</number>
                     </property>
                     <property name="maximum">
-                     <number>100</number>
+                     <number>90</number>
                     </property>
                     <property name="value">
-                     <number>100</number>
+                     <number>-45</number>
                     </property>
                    </widget>
                   </item>
                   <item row="2" column="1">
                    <widget class="QSpinBox" name="tiltServoMinSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
                     </property>
                     <property name="value">
-                     <number>1000</number>
+                     <number>1100</number>
                     </property>
                    </widget>
                   </item>
                   <item row="3" column="1">
                    <widget class="QSpinBox" name="tiltServoMaxSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
+                    </property>
+                    <property name="singleStep">
+                     <number>1</number>
                     </property>
                     <property name="value">
-                     <number>2000</number>
+                     <number>1900</number>
                     </property>
                    </widget>
                   </item>
@@ -244,18 +253,23 @@
                   </item>
                   <item row="3" column="3">
                    <widget class="QSpinBox" name="tiltAngleMaxSpinBox">
+                    <property name="minimum">
+                     <number>-90</number>
+                    </property>
                     <property name="maximum">
-                     <number>100</number>
+                     <number>90</number>
+                    </property>
+                    <property name="singleStep">
+                     <number>1</number>
                     </property>
                     <property name="value">
-                     <number>0</number>
+                     <number>45</number>
                     </property>
                    </widget>
                   </item>
                  </layout>
                 </item>
                </layout>
-               <zorder></zorder>
               </widget>
              </item>
              <item row="1" column="0">
@@ -358,11 +372,14 @@
                   </item>
                   <item row="2" column="1">
                    <widget class="QSpinBox" name="rollServoMinSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
                     </property>
                     <property name="value">
-                     <number>1000</number>
+                     <number>1100</number>
                     </property>
                    </widget>
                   </item>
@@ -379,13 +396,13 @@
                   <item row="2" column="3">
                    <widget class="QSpinBox" name="rollAngleMinSpinBox">
                     <property name="minimum">
-                     <number>-100</number>
+                     <number>-90</number>
                     </property>
                     <property name="maximum">
-                     <number>100</number>
+                     <number>90</number>
                     </property>
                     <property name="value">
-                     <number>100</number>
+                     <number>-45</number>
                     </property>
                    </widget>
                   </item>
@@ -404,11 +421,17 @@
                   </item>
                   <item row="3" column="1">
                    <widget class="QSpinBox" name="rollServoMaxSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
+                    </property>
+                    <property name="singleStep">
+                     <number>1</number>
                     </property>
                     <property name="value">
-                     <number>2000</number>
+                     <number>1900</number>
                     </property>
                    </widget>
                   </item>
@@ -425,13 +448,16 @@
                   <item row="3" column="3">
                    <widget class="QSpinBox" name="rollAngleMaxSpinBox">
                     <property name="minimum">
-                     <number>-100</number>
+                     <number>-90</number>
                     </property>
                     <property name="maximum">
-                     <number>100</number>
+                     <number>90</number>
+                    </property>
+                    <property name="singleStep">
+                     <number>1</number>
                     </property>
                     <property name="value">
-                     <number>100</number>
+                     <number>45</number>
                     </property>
                    </widget>
                   </item>
@@ -519,11 +545,17 @@
                   </item>
                   <item row="3" column="1">
                    <widget class="QSpinBox" name="panServoMaxSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
+                    </property>
+                    <property name="singleStep">
+                     <number>1</number>
                     </property>
                     <property name="value">
-                     <number>2000</number>
+                     <number>1900</number>
                     </property>
                    </widget>
                   </item>
@@ -566,11 +598,14 @@
                   </item>
                   <item row="2" column="1">
                    <widget class="QSpinBox" name="panServoMinSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
                     </property>
                     <property name="value">
-                     <number>1000</number>
+                     <number>1100</number>
                     </property>
                    </widget>
                   </item>
@@ -601,13 +636,13 @@
                   <item row="2" column="3">
                    <widget class="QSpinBox" name="panAngleMinSpinBox">
                     <property name="minimum">
-                     <number>-100</number>
+                     <number>-90</number>
                     </property>
                     <property name="maximum">
-                     <number>100</number>
+                     <number>90</number>
                     </property>
                     <property name="value">
-                     <number>100</number>
+                     <number>-45</number>
                     </property>
                    </widget>
                   </item>
@@ -621,13 +656,16 @@
                   <item row="3" column="3">
                    <widget class="QSpinBox" name="panAngleMaxSpinBox">
                     <property name="minimum">
-                     <number>-100</number>
+                     <number>-90</number>
                     </property>
                     <property name="maximum">
-                     <number>100</number>
+                     <number>90</number>
+                    </property>
+                    <property name="singleStep">
+                     <number>1</number>
                     </property>
                     <property name="value">
-                     <number>100</number>
+                     <number>45</number>
                     </property>
                    </widget>
                   </item>
@@ -733,11 +771,14 @@
                   </item>
                   <item row="2" column="1">
                    <widget class="QSpinBox" name="camTriggerServoMinSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
                     </property>
                     <property name="value">
-                     <number>1000</number>
+                     <number>1100</number>
                     </property>
                    </widget>
                   </item>
@@ -753,11 +794,14 @@
                   </item>
                   <item row="2" column="3">
                    <widget class="QSpinBox" name="camTriggerOnPwmSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
                     </property>
                     <property name="value">
-                     <number>1000</number>
+                     <number>1100</number>
                     </property>
                    </widget>
                   </item>
@@ -773,11 +817,17 @@
                   </item>
                   <item row="3" column="1">
                    <widget class="QSpinBox" name="camTriggerServoMaxSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
+                    </property>
+                    <property name="singleStep">
+                     <number>1</number>
                     </property>
                     <property name="value">
-                     <number>2000</number>
+                     <number>1900</number>
                     </property>
                    </widget>
                   </item>
@@ -793,11 +843,14 @@
                   </item>
                   <item row="3" column="3">
                    <widget class="QSpinBox" name="camTriggerOffPwmSpinBox">
+                    <property name="minimum">
+                     <number>900</number>
+                    </property>
                     <property name="maximum">
-                     <number>3000</number>
+                     <number>2100</number>
                     </property>
                     <property name="value">
-                     <number>2000</number>
+                     <number>1900</number>
                     </property>
                    </widget>
                   </item>
@@ -825,7 +878,6 @@
                  </layout>
                 </item>
                </layout>
-               <zorder></zorder>
               </widget>
              </item>
             </layout>
@@ -1053,6 +1105,19 @@
           </widget>
          </item>
          <item>
+          <widget class="QLabel" name="label_49">
+           <property name="text">
+            <string>Mount Mode</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="mountModeComboBox"/>
+         </item>
+         <item>
           <spacer name="verticalSpacer">
            <property name="orientation">
             <enum>Qt::Vertical</enum>
@@ -1089,6 +1154,49 @@
    </item>
   </layout>
  </widget>
+ <tabstops>
+  <tabstop>scrollArea</tabstop>
+  <tabstop>tiltChannelComboBox</tabstop>
+  <tabstop>tiltStabilizeCheckBox</tabstop>
+  <tabstop>tiltServoMinSpinBox</tabstop>
+  <tabstop>tiltServoMaxSpinBox</tabstop>
+  <tabstop>tiltReverseCheckBox</tabstop>
+  <tabstop>tiltAngleMinSpinBox</tabstop>
+  <tabstop>tiltAngleMaxSpinBox</tabstop>
+  <tabstop>tiltInputChannelComboBox</tabstop>
+  <tabstop>rollChannelComboBox</tabstop>
+  <tabstop>rollStabilizeCheckBox</tabstop>
+  <tabstop>rollServoMinSpinBox</tabstop>
+  <tabstop>rollServoMaxSpinBox</tabstop>
+  <tabstop>rollReverseCheckBox</tabstop>
+  <tabstop>rollAngleMinSpinBox</tabstop>
+  <tabstop>rollAngleMaxSpinBox</tabstop>
+  <tabstop>rollInputChannelComboBox</tabstop>
+  <tabstop>panChannelComboBox</tabstop>
+  <tabstop>panStabilizeCheckBox</tabstop>
+  <tabstop>panServoMinSpinBox</tabstop>
+  <tabstop>panServoMaxSpinBox</tabstop>
+  <tabstop>panReverseCheckBox</tabstop>
+  <tabstop>panAngleMinSpinBox</tabstop>
+  <tabstop>panAngleMaxSpinBox</tabstop>
+  <tabstop>panInputChannelComboBox</tabstop>
+  <tabstop>camTriggerOutChannelComboBox</tabstop>
+  <tabstop>camTriggerServoMinSpinBox</tabstop>
+  <tabstop>camTriggerServoMaxSpinBox</tabstop>
+  <tabstop>camTriggerOnPwmSpinBox</tabstop>
+  <tabstop>camTriggerOffPwmSpinBox</tabstop>
+  <tabstop>camTriggerDurationSpinBox</tabstop>
+  <tabstop>retractXSpinBox</tabstop>
+  <tabstop>retractYSpinBox</tabstop>
+  <tabstop>retractZSpinBox</tabstop>
+  <tabstop>neutralXSpinBox</tabstop>
+  <tabstop>neutralYSpinBox</tabstop>
+  <tabstop>neutralZSpinBox</tabstop>
+  <tabstop>controlXSpinBox</tabstop>
+  <tabstop>controlYSpinBox</tabstop>
+  <tabstop>controlZSpinBox</tabstop>
+  <tabstop>camTriggerTypeComboBox</tabstop>
+ </tabstops>
  <resources>
   <include location="../../../qgroundcontrol.qrc"/>
  </resources>

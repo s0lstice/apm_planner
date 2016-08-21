@@ -101,6 +101,8 @@ public:
 
     /* MANAGEMENT */
 
+    virtual void setHeartbeatEnabled(bool enabled)=0;
+
     /** @brief The name of the robot **/
     virtual QString getUASName() const = 0;
     /** @brief Get short state */
@@ -134,7 +136,8 @@ public:
 
     virtual double getLatitude() const = 0;
     virtual double getLongitude() const = 0;
-    virtual double getAltitude() const = 0;
+    virtual double getAltitudeAMSL() const = 0;
+    virtual double getAltitudeRelative() const = 0;
     virtual bool globalPositionKnown() const = 0;
 
     virtual double getRoll() const = 0;
@@ -212,6 +215,7 @@ public:
          *         interface. The LinkInterface can support multiple protocols.
          **/
     virtual QList<LinkInterface*>* getLinks() = 0;
+    virtual QList<int> getLinkIdList() = 0;
 
     /**
      * @brief Get the color for this UAS
@@ -254,13 +258,22 @@ public:
 
     /** @brief Get the type of the system (airplane, quadrotor, helicopter,..)*/
     virtual int getSystemType() = 0;
-    /** @brief Get the name of the system (ie. APM, PX4 etc..*/
+    /** @brief Indicates whether this system is capable of controlling a reverse velocity.
+     * Used for, among other things, altering joystick input to either -1:1 or 0:1 range.
+     */
+    virtual bool systemCanReverse() const = 0;
+
     virtual QString getSystemTypeName() = 0;
 
-    /** @brief Test if the system is in a sub-group*/
+    /** @brief Return if this a multirotor vehicle (inc heli) */
     virtual bool isMultirotor() = 0;
+	/** @brief Return if this a rotary wing */
+    virtual bool isRotaryWing() = 0;
+	/** @brief Return if this a fixed wing */
     virtual bool isFixedWing() = 0;
+	/** @brief Return if this a ground vehicle */
     virtual bool isGroundRover() = 0;
+	/** @brief Return if this a helicopter */
     virtual bool isHelicopter() = 0;
 
     /** @brief Get the type of the autopilot (PIXHAWK, APM, UDB, PPZ,..) */
@@ -276,6 +289,16 @@ public:
     }
 
 public slots:
+
+    /**
+     * @brief Slots for connecting the mavlink decoder to
+     * @param title
+     * @param message
+     */
+    virtual void protocolStatusMessageRec(const QString& title, const QString& message)=0;
+    virtual void valueChangedRec(const int uasId, const QString& name, const QString& unit, const QVariant& value, const quint64 msec)=0;
+    virtual void textMessageReceivedRec(int uasid, int componentid, int severity, const QString& text)=0;
+    virtual void receiveLossChangedRec(int id,float value)=0;
 
     /** @brief Set a new name for the system */
     virtual void setUASName(const QString& name) = 0;
@@ -299,6 +322,8 @@ public slots:
     virtual void home() = 0;
     /** @brief Order the robot to land **/
     virtual void land() = 0;
+    /** @brief Order the robot to pair its receiver **/
+    virtual void pairRX(int rxType, int rxSubType) = 0;
     /** @brief Halt the system */
     virtual void halt() = 0;
     /** @brief Start/continue the current robot action */
@@ -306,7 +331,7 @@ public slots:
     /** @brief Set the current mode of operation */
     virtual void setMode(int mode) = 0;
     /** @brief Set the current mode of operation */
-    virtual void setMode(int mode, int custom_mode) = 0;
+    virtual void setMode(uint8_t newBaseMode, uint32_t newCustomMode) = 0;
     /** Stops the robot system. If it is an MAV, the robot starts the emergency landing procedure **/
     virtual void emergencySTOP() = 0;
     /** Kills the robot. All systems are immediately shut down (e.g. the main power line is cut). This might lead to a crash **/
@@ -317,6 +342,8 @@ public slots:
      * Works only if already landed and will cleanly shut down all onboard computers.
      */
     virtual void shutdown() = 0;
+
+    virtual void reboot()=0;
     /** @brief Set the target position for the robot to navigate to.
      *  @param x x-coordinate of the target position
      *  @param y y-coordinate of the target position
@@ -378,11 +405,14 @@ public slots:
     virtual void setLocalPositionSetpoint(float x, float y, float z, float yaw) = 0;
     virtual void setLocalPositionOffset(float x, float y, float z, float yaw) = 0;
 
-    virtual void startRadioControlCalibration() = 0;
+    virtual void startRadioControlCalibration(int param=1) = 0;
+    virtual void endRadioControlCalibration() = 0;
     virtual void startMagnetometerCalibration() = 0;
     virtual void startGyroscopeCalibration() = 0;
     virtual void startPressureCalibration() = 0;
+    virtual void startCompassMotCalibration() = 0;
 
+ 	// [NOTE] isRotary/isFixedWing defined above.
     /** @brief Set the current battery type and voltages */
     virtual void setBatterySpecs(const QString& specs) = 0;
     /** @brief Get the current battery type and specs */
@@ -391,20 +421,26 @@ public slots:
     /** @brief Send the full HIL state to the MAV */
     virtual void sendHilState(quint64 time_us, float roll, float pitch, float yaw, float rollspeed,
                         float pitchspeed, float yawspeed, double lat, double lon, double alt,
-                        float vx, float vy, float vz, float xacc, float yacc, float zacc) = 0;
+                        float vx, float vy, float vz, float ind_airspeed, float true_airspeed, float xacc, float yacc, float zacc) = 0;
 
     /** @brief RAW sensors for sensor HIL */
     virtual void sendHilSensors(quint64 time_us, float xacc, float yacc, float zacc, float rollspeed, float pitchspeed, float yawspeed,
-                                        float xmag, float ymag, float zmag, float abs_pressure, float diff_pressure, float pressure_alt, float temperature, quint16 fields_changed) = 0;
+                                float xmag, float ymag, float zmag, float abs_pressure, float diff_pressure, float pressure_alt, float temperature, quint32 fields_changed) = 0;
 
     /** @brief Send raw GPS for sensor HIL */
-    virtual void sendHilGps(quint64 time_us, double lat, double lon, double alt, int fix_type, float eph, float epv, float vel, float cog, int satellites) = 0;
+    virtual void sendHilGps(quint64 time_us, double lat, double lon, double alt, int fix_type, float eph, float epv, float vel, float vn, float ve, float vd, float cog, int satellites) = 0;
 
     // Donwload Log Files over MAVLink.
     virtual void logRequestList(uint16_t start, uint16_t end) = 0;
     virtual void logRequestData(uint16_t id, uint32_t ofs, uint32_t count) = 0;
     virtual void logEraseAll() = 0;
     virtual void logRequestEnd() = 0;
+
+    /** @brief Receive a message from one of the communication links. */
+    virtual void receiveMessage(LinkInterface* link, mavlink_message_t message) = 0;
+
+    virtual int getSystemId()=0;
+    virtual int getComponentId()=0;
 
 protected:
     QColor color;
@@ -505,16 +541,7 @@ signals:
       * @param value the value that changed
       * @param msec the timestamp of the message, in milliseconds
       */
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const quint8 value, const quint64 msec);
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const qint8 value, const quint64 msec);
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const quint16 value, const quint64 msec);
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const qint16 value, const quint64 msec);
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const quint32 value, const quint64 msec);
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const qint32 value, const quint64 msec);
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const quint64 value, const quint64 msec);
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const qint64 value, const quint64 msec);
-    void valueChanged(const int uasId, const QString& name, const QString& unit, const double value, const quint64 msec);
-    void valueChanged(const int uasid, const QString& name, const QString& unit, const QVariant value,const quint64 msecs);
+    void valueChanged(const int uasid, const QString& name, const QString& unit, const QVariant &value,const quint64 msecs);
 
     void voltageChanged(int uasId, double voltage);
     void waypointUpdated(int uasId, int id, double x, double y, double z, double yaw, bool autocontinue, bool active);
@@ -549,17 +576,12 @@ signals:
     void localPositionChanged(UASInterface*, double x, double y, double z, quint64 usec);
     void localPositionChanged(UASInterface*, int component, double x, double y, double z, quint64 usec);
     void globalPositionChanged(UASInterface*, double lat, double lon, double alt, quint64 usec);
-    void gpsRawChanged(UASInterface*, double lat, double lon, double alt, double hdop, int sat_count, quint64 usec);
-    void primaryAltitudeChanged(UASInterface*, double altitude, quint64 usec);
-    void gpsAltitudeChanged(UASInterface*, double altitude, quint64 usec);
+    void altitudeChanged(UASInterface*, double altitudeAMSL, double altitudeRelative, double climbRate, quint64 usec);
     /** @brief Update the status of one satellite used for localization */
     void gpsSatelliteStatusChanged(int uasid, int satid, float azimuth, float direction, float snr, bool used);
 
     // The horizontal speed (a scalar)
-    void primarySpeedChanged(UASInterface*, double speed, quint64 usec);
-    void gpsSpeedChanged(UASInterface*, double speed, quint64 usec);
-    // The vertical speed (a scalar)
-    void climbRateChanged(UASInterface*, double climb, quint64 usec);
+    void speedChanged(UASInterface* uas, double groundSpeed, double airSpeed, quint64 usec);
     // Consider adding a MAV_FRAME parameter to this; could help specifying what the 3 scalars are.
     void velocityChanged_NED(UASInterface*, double vx, double vy, double vz, quint64 usec);
 
@@ -664,14 +686,29 @@ signals:
 
     /** @brief RAW IMU message used for calculating offsets etc */
     void rawImuMessageUpdate(UASInterface *uas, mavlink_raw_imu_t rawImu);
+    /** @brief RAW IMU message used for calculating offsets etc */
+    void scaledImuMessageUpdate(UASInterface *uas, mavlink_scaled_imu_t scaledImu);
+    /** @brief RAW IMU message used for calculating offsets etc */
+    void scaledImu2MessageUpdate(UASInterface *uas, mavlink_scaled_imu2_t scaledImu2);
     /** @brief Sensor Offset update message*/
     void sensorOffsetsMessageUpdate(UASInterface *uas, mavlink_sensor_offsets_t sensorOffsets);
     /** @brief Radio Status update message*/
     void radioMessageUpdate(UASInterface *uas, mavlink_radio_t radioMessage);
+    /** @brief Compass Mot Status update message*/
+    void compassMotCalibration(mavlink_compassmot_status_t* compassmot_status);
+    /** @brief Range Finder update message*/
+    void rangeFinderUpdate(UASInterface *uas, double distance, double voltage);
 
     // Log Download Signals
     void logEntry(int uasId, uint32_t time_utc, uint32_t size, uint16_t id, uint16_t num_logs, uint16_t last_log_num);
     void logData(uint32_t uasId, uint32_t ofs, uint16_t id, uint8_t count, const char* data);
+
+    void protocolStatusMessage(const QString& title, const QString& message);
+    //void valueChanged(const int uasId, const QString& name, const QString& unit, const QVariant& value, const quint64 msec);
+    //void textMessageReceived(int uasid, int componentid, int severity, const QString& text);
+    void receiveLossChanged(int id,float value);
+
+    void mavlinkMessageRecieved(LinkInterface *link,mavlink_message_t message);
 
 protected:
 

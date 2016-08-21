@@ -20,8 +20,7 @@ This file is part of the QGROUNDCONTROL project
     along with QGROUNDCONTROL. If not, see <http://www.gnu.org/licenses/>.
 
 ======================================================================*/
-#include "QsLog.h"
-#include "SerialLink.h"
+#include "logging.h"
 #include "QGCToolBar.h"
 #include "UASManager.h"
 #include "MainWindow.h"
@@ -196,8 +195,8 @@ void QGCToolBar::createUI()
     setActiveUAS(UASManager::instance()->getActiveUAS());
     connect(UASManager::instance(), SIGNAL(activeUASSet(UASInterface*)), this, SLOT(setActiveUAS(UASInterface*)));
 
-    if (LinkManager::instance()->getLinks().count() > 2)
-        addLink(LinkManager::instance()->getLinks().last());
+    /*if (LinkManager::instance()->getLinks().count() > 2)
+        addLink(LinkManager::instance()->getLinks().last());*/
     // XXX implies that connect button is always active for the last used link
     connect(LinkManager::instance(), SIGNAL(newLink(LinkInterface*)), this, SLOT(addLink(LinkInterface*)));
     connect(LinkManager::instance(), SIGNAL(linkRemoved(LinkInterface*)), this, SLOT(removeLink(LinkInterface*)));
@@ -560,12 +559,12 @@ void QGCToolBar::removeLink(LinkInterface* link)
         //portComboBox->setEnabled(false);
         //portComboBox->clear();
         // XXX magic number
-        if (LinkManager::instance()->getLinks().count() > 2) {
+        /*if (LinkManager::instance()->getLinks().count() > 2) {
             currentLink = LinkManager::instance()->getLinks().last();
             updateLinkState(currentLink->isConnected());
         } else {
             connectButton->setText(tr("New Link"));
-        }
+        }*/
     }
     updateComboBox();
 }
@@ -574,7 +573,7 @@ void QGCToolBar::updateComboBox()
     portComboBox->clear();
     for (int i=0;i<LinkManager::instance()->getLinks().count();i++)
     {
-        SerialLink *slink = qobject_cast<SerialLink*>(LinkManager::instance()->getLinks()[i]);
+        /*SerialLink *slink = qobject_cast<SerialLink*>(LinkManager::instance()->getLinks()[i]); // SerialLink Deprecated
         if (slink)
         {
             //It's a serial link
@@ -592,6 +591,7 @@ void QGCToolBar::updateComboBox()
         {
             portComboBox->addItem(LinkManager::instance()->getLinks()[i]->getName());
         }
+        */
     }
 }
 
@@ -616,9 +616,10 @@ void QGCToolBar::updateLinkState(bool connected)
 
 void QGCToolBar::connectLink(bool connect)
 {
+    Q_UNUSED(connect)
     // No serial port yet present
     // XXX magic number
-    if (connect && LinkManager::instance()->getLinks().count() < 3)
+    /*if (connect && LinkManager::instance()->getLinks().count() < 3)
     {
         MainWindow::instance()->addLink();
     } else if (connect) {
@@ -641,7 +642,7 @@ void QGCToolBar::connectLink(bool connect)
         }
     } else if (!connect && LinkManager::instance()->getLinks().count() > 2) {
         LinkManager::instance()->getLinks().last()->disconnect();
-    }
+    }*/
 }
 
 

@@ -53,7 +53,6 @@ namespace core {
         /// Gets or sets the value of the User-agent HTTP header.
         /// </summary>
         QByteArray UserAgent;
-        QNetworkProxy Proxy;
         UrlFactory();
         ~UrlFactory();
         QString MakeImageUrl(const MapType::Types &type,const core::Point &pos,const int &zoom,const QString &language);
@@ -61,6 +60,7 @@ namespace core {
         Placemark GetPlacemarkFromGeocoder(internals::PointLatLng location);
         int Timeout;
     private:
+        int Random(int low, int high);
         void GetSecGoogleWords(const core::Point &pos,  QString &sec1, QString &sec2);
         int GetServerNum(const core::Point &pos,const int &max) const;
         void TryCorrectGoogleVersions();

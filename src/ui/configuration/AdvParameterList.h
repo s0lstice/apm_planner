@@ -36,6 +36,8 @@ This file is part of the APM_PLANNER project
 #include "ui_AdvParameterList.h"
 #include "AP2ConfigWidget.h"
 
+class QFileDialog;
+
 class AdvParameterList : public AP2ConfigWidget
 {
     Q_OBJECT
@@ -49,6 +51,7 @@ public:
                               const QString& unit, const QString& range);
     ~AdvParameterList();
     void updateTableWidgetElements(QMap<QString, UASParameter*> &parameterList);
+
 private slots:
     void parameterChanged(int uas, int component, QString parameterName, QVariant value);
     void parameterChanged(int uas, int component, int parameterCount, int parameterId,
@@ -63,6 +66,14 @@ private slots:
     void findStringInTable(const QString& searchString);
     void nextItemInSearch();
     void previousItemInSearch();
+    void resetButtonClicked();
+    void loadDialogAccepted();
+    void saveDialogAccepted();
+    void dialogRejected();
+
+private:
+    // Helper methods
+    void resetParamWriteWidget();
 
 private:
     Ui::AdvParameterList ui;
@@ -76,6 +87,7 @@ private:
     QMap<QString,double> m_modifiedParamMap;
     QMap<QString,QString> m_paramToUnitMap;
     QMap<QString,QString> m_paramToRangeMap;
+    QMap<QString,QString> m_paramToOrigValueMap;
 
     QList<QTableWidgetItem *> m_searchItemList;
     int m_searchIndex;
@@ -89,6 +101,7 @@ private:
     int m_paramsToWrite;
 
     QString m_paramFileToCompare;
+    QFileDialog *m_fileDialog;
 };
 
 #endif // ADVPARAMETERLIST_H

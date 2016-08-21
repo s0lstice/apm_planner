@@ -19,6 +19,7 @@ public:
     ~QGCMapTool();
 
 public slots:
+    void setMapZoom(int zoom);
     /** @brief Update slider zoom from map change */
     void setZoom(int zoom);
 
@@ -26,9 +27,11 @@ signals:
     void visibilityChanged(bool visible);
 
 private slots:
-    void activeUASSet(UASInterface *uas);
+    void activeUASSet(UASInterface *uasInterface);
     void globalPositionUpdate();
-    void gpsRawUpdate();
+    void gpsHdopChanged(double value, const QString&);
+    void gpsFixChanged(int, const QString&);
+    void satelliteCountChanged(int value, const QString&);
 
 private:
     void showEvent(QShowEvent* event);
@@ -37,7 +40,7 @@ private:
 private:
     Ui::QGCMapTool *ui;
 
-    UASInterface* m_uas;
+    UASInterface* m_uasInterface;
 };
 
 #endif // QGCMAPTOOL_H

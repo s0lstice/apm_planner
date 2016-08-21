@@ -19,7 +19,7 @@ This file is part of the APM_PLANNER project
     along with APM_PLANNER. If not, see <http://www.gnu.org/licenses/>.
 
 ======================================================================*/
-#include "QsLog.h"
+#include "logging.h"
 #include "FlightModeConfig.h"
 #include "ArduPilotMegaMAV.h"
 #include "ApmUiHelpers.h"
@@ -27,7 +27,8 @@ This file is part of the APM_PLANNER project
 #include "QGCCore.h"
 
 FlightModeConfig::FlightModeConfig(QWidget *parent) : AP2ConfigWidget(parent),
-    m_modesUpdated(0)
+    m_modesUpdated(0),
+    m_flightModeCh(5) // default is channel 5 (copter)
 {
     ui.setupUi(this);
 
@@ -69,7 +70,6 @@ void FlightModeConfig::activeUASSet(UASInterface *uas)
 {
     if (m_uas)
     {
-        disconnect(m_uas,SIGNAL(modeChanged(int,QString,QString)),this,SLOT(modeChanged(int,QString,QString)));
         disconnect(m_uas,SIGNAL(remoteControlChannelRawChanged(int,float)),this,SLOT(remoteControlChannelRawChanged(int,float)));
         disconnect(ui.mode1ComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(comboBoxChanged(int)));
         disconnect(ui.mode2ComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(comboBoxChanged(int)));
@@ -94,7 +94,6 @@ void FlightModeConfig::activeUASSet(UASInterface *uas)
     }
     AP2ConfigWidget::activeUASSet(uas);
     if (!uas) return;
-    connect(m_uas,SIGNAL(modeChanged(int,QString,QString)),this,SLOT(modeChanged(int,QString,QString)));
     connect(m_uas,SIGNAL(remoteControlChannelRawChanged(int,float)),this,SLOT(remoteControlChannelRawChanged(int,float)));
     QStringList itemlist;
 
@@ -109,6 +108,7 @@ void FlightModeConfig::activeUASSet(UASInterface *uas)
 
         ui.mode6ComboBox->setEnabled(false);
         m_modeString = "FLT";
+        m_flightModeCh = m_uas->getParamManager()->getParameterValue(1,"FLTMODE_CH").toInt();
     }
     else if (m_uas->isGroundRover())
     {
@@ -121,6 +121,7 @@ void FlightModeConfig::activeUASSet(UASInterface *uas)
         ApmUiHelpers::addRoverModes(ui.mode5ComboBox);
         ApmUiHelpers::addRoverModes(ui.mode6ComboBox);
         m_modeString = "";
+        m_flightModeCh = m_uas->getParamManager()->getParameterValue(1,"FLTMODE_CH").toInt();
     }
     else if (m_uas->isMultirotor())
     {
@@ -139,6 +140,7 @@ void FlightModeConfig::activeUASSet(UASInterface *uas)
         ui.mode5SimpleCheckBox->setVisible(true);
         ui.mode6SimpleCheckBox->setVisible(true);
         m_modeString = "FLT";
+        m_flightModeCh = 5; // ie. Channel 5
     }
 
     connect(ui.mode1ComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(comboBoxChanged(int)));
@@ -161,8 +163,6 @@ void FlightModeConfig::activeUASSet(UASInterface *uas)
     connect(ui.mode4SimpleCheckBox, SIGNAL(clicked()), this, SLOT(enableSaveButton()));
     connect(ui.mode5SimpleCheckBox, SIGNAL(clicked()), this, SLOT(enableSaveButton()));
     connect(ui.mode6SimpleCheckBox, SIGNAL(clicked()), this, SLOT(enableSaveButton()));
-
-
 }
 
 void FlightModeConfig::enableSaveButton()
@@ -190,11 +190,6 @@ bool FlightModeConfig::isFlightModeChanged()
 
     return false; // no changes
 
-}
-
-void FlightModeConfig::modeChanged(int sysId, QString status, QString description)
-{
-    //Unused?
 }
 
 void FlightModeConfig::checkForComboxBoxChanged(QObject* sender, QComboBox *comboBox, int index,
@@ -272,10 +267,8 @@ void FlightModeConfig::saveButtonClicked()
 
 void FlightModeConfig::remoteControlChannelRawChanged(int chan,float val)
 {
-    if (chan == 4)
+    if (chan == m_flightModeCh-1) // Zero indexed.
     {
-        //Channel 5 (0 array) is the mode switch.
-        ///TODO: Make this configurable
         if (val <= 1230)
         {
             ui.mode1Label->setStyleSheet("background-color: rgb(0, 255, 0);color: rgb(0, 0, 0);");
@@ -381,6 +374,8 @@ void FlightModeConfig::parameterChanged(int uas, int component, QString paramete
     else if ((parameterName == m_modeString + "MODE6"))
     {
         updateModeComboBox(ui.mode6ComboBox, value, m_changedModes[5]);
+    } else if ((parameterName == "FLTMODE_CH")){
+        m_flightModeCh = value.toInt();
     }
 
     if (m_uas->isMultirotor())

@@ -30,7 +30,7 @@ This file is part of the QGROUNDCONTROL project
  */
 
 #include "QGCCore.h"
-#include "QsLog.h"
+#include "logging.h"
 #include "configuration.h"
 #include "QGC.h"
 #include "MainWindow.h"
@@ -41,7 +41,6 @@ This file is part of the QGROUNDCONTROL project
 #endif
 #include "UDPLink.h"
 #include "MAVLinkSimulationLink.h"
-#include "SerialLink.h"
 
 #include <QFile>
 #include <QFlags>
@@ -63,8 +62,6 @@ This file is part of the QGROUNDCONTROL project
  * @param argv The string array of parameters
  **/
 
-#define define2string_p(x) #x
-#define define2string(x) define2string_p(x)
 
 QGCCore::QGCCore(int &argc, char* argv[]) : QApplication(argc, argv)
 {
@@ -74,10 +71,16 @@ QGCCore::QGCCore(int &argc, char* argv[]) : QApplication(argc, argv)
     // Set application name
     this->setApplicationName(QGC_APPLICATION_NAME);
     this->setApplicationVersion(QGC_APPLICATION_VERSION);
-    this->setOrganizationName(QLatin1String("diydrones"));
-    this->setOrganizationDomain("com.diydrones");
+    this->setOrganizationName(QLatin1String("ardupilot"));
+    this->setOrganizationDomain("org.ardupilot");
 
     m_mouseWheelFilter = new QGCMouseWheelEventFilter(this);
+
+    connect(this, SIGNAL(aboutToQuit()), this, SLOT(aboutToQuit()));
+}
+
+void QGCCore::aboutToQuit()
+{
 }
 
 void QGCCore::initialize()
@@ -88,6 +91,9 @@ void QGCCore::initialize()
     QLOG_INFO() << "Git Commit:" << define2string(GIT_COMMIT);
     QLOG_INFO() << "APPLICATION_NAME:" << define2string(QGC_APPLICATION_NAME);
     QLOG_INFO() << "APPLICATION_VERSION:" << define2string(QGC_APPLICATION_VERSION);
+    QLOG_INFO() << "APP_PLATFORM:" << define2string(APP_PLATFORM);
+    QLOG_INFO() << "APP_TYPE:" << define2string(APP_TYPE);
+
 
     // Check application settings
     // clear them if they mismatch
@@ -102,10 +108,19 @@ void QGCCore::initialize()
         QString qgcVersion = settings.value("QGC_APPLICATION_VERSION").toString();
         if (qgcVersion != QGC_APPLICATION_VERSION)
         {
+            settings.beginGroup("AUTO_UPDATE");
+            bool autoUpdateEnabled = settings.value("ENABLED", true).toBool();
+            QString releaseType = settings.value("RELEASE_TYPE", define2string(APP_TYPE)).toString();
+            settings.endGroup();
+
             lastApplicationVersion = qgcVersion;
             settings.clear();
-            // Write current application version
+            // Write current application version & update settings.
             settings.setValue("QGC_APPLICATION_VERSION", QGC_APPLICATION_VERSION);
+            settings.beginGroup("AUTO_UPDATE");
+            settings.setValue("ENABLED",autoUpdateEnabled);
+            settings.setValue("RELEASE_TYPE", releaseType);
+            settings.endGroup();
             upgraded = true;
         }
     }
@@ -157,8 +172,8 @@ void QGCCore::initialize()
     // Connect links
     // to make sure that all components are initialized when the
     // first messages arrive
-    UDPLink* udpLink = new UDPLink(QHostAddress::Any, 14550);
-    MainWindow::instance()->addLink(udpLink);
+    //UDPLink* udpLink = new UDPLink(QHostAddress::Any, 14550);
+    //MainWindow::instance()->addLink(udpLink);
     // Listen on Multicast-Address 239.255.77.77, Port 14550
     //QHostAddress * multicast_udp = new QHostAddress("239.255.77.77");
     //UDPLink* udpLink = new UDPLink(*multicast_udp, 14550);
@@ -174,9 +189,6 @@ void QGCCore::initialize()
 #endif
 
 
-    //We want to have a default serial link available for "quick" connecting.
-    SerialLink *slink = new SerialLink();
-    MainWindow::instance()->addLink(slink);
 
     mainWindow = MainWindow::instance(splashScreen);
 
@@ -186,27 +198,6 @@ void QGCCore::initialize()
     if (upgraded) mainWindow->showInfoMessage(tr("Default Settings Loaded"),
                                               tr("APM Planner has been upgraded from version %1 to version %2. Some of your user preferences have been reset to defaults for safety reasons. Please adjust them where needed.").arg(lastApplicationVersion).arg(QGC_APPLICATION_VERSION));
 
-    // Check if link could be connected
-    if (!udpLink->connect())
-    {
-        QMessageBox msgBox;
-        msgBox.setIcon(QMessageBox::Critical);
-        msgBox.setText("Could not connect UDP port. Is an instance of " + qAppName() + "already running?");
-        msgBox.setInformativeText("You will not be able to receive data via UDP. Please check that you're running the right executable and then re-start " + qAppName() + ". Do you want to close the application?");
-        msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-        msgBox.setDefaultButton(QMessageBox::No);
-        int ret = msgBox.exec();
-
-        // Close the message box shortly after the click to prevent accidental clicks
-        QTimer::singleShot(15000, &msgBox, SLOT(reject()));
-
-        // Exit application
-        if (ret == QMessageBox::Yes)
-        {
-            //mainWindow->close();
-            QTimer::singleShot(200, mainWindow, SLOT(close()));
-        }
-    }
 }
 
 /**

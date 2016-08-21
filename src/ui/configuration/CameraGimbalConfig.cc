@@ -20,7 +20,7 @@ This file is part of the APM_PLANNER project
 
 ======================================================================*/
 
-#include "QsLog.h"
+#include "logging.h"
 #include <QMessageBox>
 
 #include "CameraGimbalConfig.h"
@@ -44,6 +44,12 @@ CameraGimbalConfig::CameraGimbalConfig(QWidget *parent) : AP2ConfigWidget(parent
     addInputRcChannels(ui.panInputChannelComboBox);
 
     addTriggerTypes(ui.camTriggerTypeComboBox);
+
+    ui.mountModeComboBox->insertItem(0, "Retract", MAV_MOUNT_MODE_RETRACT);
+    ui.mountModeComboBox->insertItem(1, "Neutral", MAV_MOUNT_MODE_NEUTRAL );
+    ui.mountModeComboBox->insertItem(2, "MAVLink Targeting", MAV_MOUNT_MODE_MAVLINK_TARGETING );
+    ui.mountModeComboBox->insertItem(3, "RC Targeting", MAV_MOUNT_MODE_RC_TARGETING );
+    ui.mountModeComboBox->insertItem(4, "GPS Point", MAV_MOUNT_MODE_GPS_POINT );
 
     initConnections();
 }
@@ -104,6 +110,8 @@ void CameraGimbalConfig::connectSignals()
     connect(ui.neutralXSpinBox,SIGNAL(editingFinished()),this,SLOT(updateNeutralAngles()));
     connect(ui.neutralYSpinBox,SIGNAL(editingFinished()),this,SLOT(updateNeutralAngles()));
     connect(ui.neutralZSpinBox,SIGNAL(editingFinished()),this,SLOT(updateNeutralAngles()));
+
+    connect(ui.mountModeComboBox,SIGNAL(currentIndexChanged(int)), this, SLOT(updateMountMode(int)));
 }
 
 void CameraGimbalConfig::disconnectSignals()
@@ -170,7 +178,10 @@ void CameraGimbalConfig::addOutputRcChannels(QComboBox* comboBox)
     comboBox->addItem("RC10", 10);
     comboBox->addItem("RC11", 11);
     comboBox->addItem("RC12", 12);
-
+    comboBox->addItem("RC13", 13);
+    comboBox->addItem("RC14", 14);
+    comboBox->addItem("RC15", 15);
+    comboBox->addItem("RC16", 16);
 }
 
 void CameraGimbalConfig::addInputRcChannels(QComboBox* comboBox)
@@ -180,6 +191,14 @@ void CameraGimbalConfig::addInputRcChannels(QComboBox* comboBox)
     comboBox->addItem("RC6", 6);
     comboBox->addItem("RC7", 7);
     comboBox->addItem("RC8", 8);
+    comboBox->addItem("RC9", 9);
+    comboBox->addItem("RC10", 10);
+    comboBox->addItem("RC11", 11);
+    comboBox->addItem("RC12", 12);
+    comboBox->addItem("RC13", 13);
+    comboBox->addItem("RC14", 14);
+    comboBox->addItem("RC15", 15);
+    comboBox->addItem("RC16", 16);
 }
 
 void CameraGimbalConfig::addTriggerTypes(QComboBox *comboBox)
@@ -191,7 +210,16 @@ void CameraGimbalConfig::addTriggerTypes(QComboBox *comboBox)
 void CameraGimbalConfig::activeUASSet(UASInterface *uas)
 {
     AP2ConfigWidget::activeUASSet(uas);
-    if (!uas) return;
+}
+
+void CameraGimbalConfig::showEvent(QShowEvent *)
+{
+    requestParameterUpdate();
+}
+
+void CameraGimbalConfig::requestParameterUpdate()
+{
+    if (!m_uas) return;
     // The List of Params we care about
 
     for (int channelCount=5; channelCount <= 11; ++channelCount) {
@@ -255,14 +283,15 @@ void CameraGimbalConfig::activeUASSet(UASInterface *uas)
             << "MNT2_ANGMIN_PAN"
             << "MNT2_ANGMAX_PAN"
 
-            << "MNT2_JSTICK_SPD";
+            << "MNT2_JSTICK_SPD"
+            << "MNT_MODE";
 
     qDebug() << "cameraParams" << m_cameraParams;
 
-//    QGCUASParamManager *pm = m_uas->getParamManager();
-//    foreach(QString parameter, m_cameraParams) {
-//        pm->requestParameterUpdate(1, parameter);
-//    };
+    QGCUASParamManager *pm = m_uas->getParamManager();
+    foreach(QString parameter, m_cameraParams) {
+        pm->requestParameterUpdate(1, parameter);
+    };
 }
 
 void CameraGimbalConfig::updateRetractAngles()
@@ -337,7 +366,7 @@ void CameraGimbalConfig::updateTilt()
     updateCameraGimbalParams(m_tiltPrefix, m_newTiltPrefix, "TILT", RC_FUNCTION::mount_tilt,
                          ui.tiltChannelComboBox, ui.tiltInputChannelComboBox,
                          ui.tiltServoMinSpinBox, ui.tiltServoMaxSpinBox, ui.tiltReverseCheckBox,
-                         ui.tiltAngleMinSpinBox, ui.tiltAngleMaxSpinBox);
+                         ui.tiltAngleMinSpinBox, ui.tiltAngleMaxSpinBox, ui.tiltStabilizeCheckBox);
 }
 
 void CameraGimbalConfig::updateRoll()
@@ -345,7 +374,7 @@ void CameraGimbalConfig::updateRoll()
     updateCameraGimbalParams(m_rollPrefix, m_newRollPrefix, "ROLL", RC_FUNCTION::mount_roll,
                          ui.rollChannelComboBox, ui.rollInputChannelComboBox,
                          ui.rollServoMinSpinBox, ui.rollServoMaxSpinBox, ui.rollReverseCheckBox,
-                         ui.rollAngleMinSpinBox, ui.rollAngleMaxSpinBox);
+                         ui.rollAngleMinSpinBox, ui.rollAngleMaxSpinBox, ui.rollStabilizeCheckBox);
 }
 
 void CameraGimbalConfig::updatePan()
@@ -353,24 +382,25 @@ void CameraGimbalConfig::updatePan()
     updateCameraGimbalParams(m_panPrefix, m_newPanPrefix, "PAN", RC_FUNCTION::mount_pan,
                           ui.panChannelComboBox, ui.panInputChannelComboBox,
                           ui.panServoMinSpinBox, ui.panServoMaxSpinBox, ui.panReverseCheckBox,
-                          ui.panAngleMinSpinBox, ui.panAngleMaxSpinBox);
+                          ui.panAngleMinSpinBox, ui.panAngleMaxSpinBox, ui.panStabilizeCheckBox);
 }
 
 void CameraGimbalConfig::updateCameraGimbalParams(QString& chPrefix, const QString& newChPrefix,
                                         const QString& mountType, int rcFunction,
                                         QComboBox *outputChCombo, QComboBox* inputChCombo,
                                         QSpinBox* servoMin, QSpinBox* servoMax, QCheckBox* servoReverse,
-                                        QSpinBox* angleMin, QSpinBox* angleMax)
+                                        QSpinBox* angleMin, QSpinBox* angleMax, QCheckBox* stabilize)
 {
     if (showNullMAVErrorMessageBox())
         return;
 
     QGCUASParamManager *pm = m_uas->getParamManager();
 
-    if (!chPrefix.isEmpty() && (newChPrefix != chPrefix)){
+    if (!chPrefix.isEmpty() && (!newChPrefix.isEmpty())
+            && (newChPrefix != chPrefix) && (!chPrefix.contains("Disable"))){
         //We need to disable the old assignment first if chnaged
         QLOG_DEBUG() << "Set old " << chPrefix << " disabled";
-        pm->setParameter(1, chPrefix + "_FUNCTION", RC_FUNCTION::Disabled);
+        pm->setParameter(1, chPrefix + "_FUNCTION", static_cast<int>(RC_FUNCTION::Disabled));
     }
 
     chPrefix = newChPrefix;
@@ -391,9 +421,9 @@ void CameraGimbalConfig::updateCameraGimbalParams(QString& chPrefix, const QStri
     pm->setParameter(1, "RC" + channel + "_MAX", servoMax->value());
 
     if(servoReverse->checkState() == Qt::Checked){
-        pm->setParameter(1, "RC" + channel + "_REV", -1);
+        pm->setParameter(1, "RC" + channel + "_REV", -1.0);
     } else {
-        pm->setParameter(1, "RC" + channel + "_REV", 0);
+        pm->setParameter(1, "RC" + channel + "_REV", 1.0);
     }
 
     int inChannel = inputChCombo->itemData(inputChCombo->currentIndex()).toInt();
@@ -407,6 +437,8 @@ void CameraGimbalConfig::updateCameraGimbalParams(QString& chPrefix, const QStri
     type.resize(3);// makes the string either ROL or TIL
     pm->setParameter(1, "MNT_ANGMIN_" + type, QVariant(angleMin->value() * 100).toInt()); // centiDegrees
     pm->setParameter(1, "MNT_ANGMAX_" + type, QVariant(angleMax->value() * 100).toInt()); // centiDegrees
+    pm->setParameter(1, "MNT_STAB_" + mountType, QVariant(stabilize->isChecked()?1:0)); // Enable Stabilization
+    pm->setParameter(1, "MNT_MODE", QVariant(3)); // Set the mount mode to RC Targetting
 }
 
 
@@ -458,7 +490,7 @@ CameraGimbalConfig::~CameraGimbalConfig()
 void CameraGimbalConfig::refreshMountParameters(QString mount, QString parameterName, QVariant &value)
 {
     qDebug() << "refresh parameters " << mount;
-
+    disconnectSignals();
     if (parameterName == "MNT_ANGMIN_TIL") //TILT
     {
         ui.tiltAngleMinSpinBox->setValue(value.toInt() / 100.0);
@@ -497,8 +529,11 @@ void CameraGimbalConfig::refreshMountParameters(QString mount, QString parameter
     {
         int index = ui.panInputChannelComboBox->findData(value.toInt());
         ui.panInputChannelComboBox->setCurrentIndex(index);
-    }
 
+    } else if (parameterName == "MNT_MODE") {
+        ui.mountModeComboBox->setCurrentIndex(value.toInt());
+    }
+    connectSignals();
 }
 
 void CameraGimbalConfig::refreshCameraTriggerParameters(QString parameterName, QVariant value)
@@ -623,32 +658,58 @@ void CameraGimbalConfig::parameterChanged(int uas, int component, QString parame
 
 void CameraGimbalConfig::refreshRcFunctionComboxBox(QString rcChannelName, QVariant &value)
 {
-    QStringList rcChannelId = rcChannelName.split("_");
+    QStringList rcChannelIds = rcChannelName.split("_");
+    QString rcChannelId = rcChannelIds[0];
+
+    //in case another function takes over a used function...
+    if ( rcChannelId == m_rollPrefix && value.toInt() != 0 && value.toInt() != RC_FUNCTION::mount_roll ){
+        ui.rollChannelComboBox->setCurrentIndex(0);
+        updateRoll(0);
+    }else if ( rcChannelId == m_tiltPrefix && value.toInt() != 0 && value.toInt() != RC_FUNCTION::mount_tilt ){
+        ui.tiltChannelComboBox->setCurrentIndex(0);
+        updateTilt(0);
+    }else if ( rcChannelId == m_panPrefix && value.toInt() != 0 && value.toInt() != RC_FUNCTION::mount_pan ){
+        ui.panChannelComboBox->setCurrentIndex(0);
+        updatePan(0);
+    }else if ( rcChannelId == m_triggerPrefix && value.toInt() != 0 && value.toInt() != RC_FUNCTION::camera_trigger ){
+        ui.camTriggerOutChannelComboBox->setCurrentIndex(0);
+        updateCameraTriggerOutputCh(0);
+    }
 
     if (value.toInt() == RC_FUNCTION::camera_trigger)
     {
-        ui.camTriggerOutChannelComboBox->setCurrentIndex(ui.camTriggerOutChannelComboBox->findText(rcChannelId[0]));
-        m_triggerPrefix = rcChannelId[0];
+        ui.camTriggerOutChannelComboBox->setCurrentIndex(ui.camTriggerOutChannelComboBox->findText(rcChannelId));
+        m_triggerPrefix = rcChannelId;
         ui.camTriggerGroupBox->setEnabled(true);
     }
     else if (value.toInt() == RC_FUNCTION::mount_roll)
     {
-        ui.rollChannelComboBox->setCurrentIndex(ui.rollChannelComboBox->findText(rcChannelId[0]));
-        m_rollPrefix = rcChannelId[0];
+        ui.rollChannelComboBox->setCurrentIndex(ui.rollChannelComboBox->findText(rcChannelId));
+        m_rollPrefix = rcChannelId;
         ui.rollGroupBox->setEnabled(true);
     }
     else if (value.toInt() == RC_FUNCTION::mount_tilt)
     {
-        ui.tiltChannelComboBox->setCurrentIndex(ui.tiltChannelComboBox->findText(rcChannelId[0]));
-        m_tiltPrefix = rcChannelId[0];
+        ui.tiltChannelComboBox->setCurrentIndex(ui.tiltChannelComboBox->findText(rcChannelId));
+        m_tiltPrefix = rcChannelId;
         ui.tiltGroupBox->setEnabled(true);
     }
     else if (value.toInt() == RC_FUNCTION::mount_pan)
     {
-        ui.panChannelComboBox->setCurrentIndex(ui.panChannelComboBox->findText(rcChannelId[0]));
-        m_panPrefix = rcChannelId[0];
+        ui.panChannelComboBox->setCurrentIndex(ui.panChannelComboBox->findText(rcChannelId));
+        m_panPrefix = rcChannelId;
         ui.panGroupBox->setEnabled(true);
     }
 }
 
+void CameraGimbalConfig::updateMountMode(int index)
+{
+    if(m_uas){
+        QGCUASParamManager *pm = m_uas->getParamManager();
+        int mode = ui.mountModeComboBox->itemData(index).toInt();
+        if(pm){
+            pm->setParameter(1, "MNT_MODE", QVariant(static_cast<int>(mode))); // Set the mount mode to RC Targetting
+        }
+    }
+}
 

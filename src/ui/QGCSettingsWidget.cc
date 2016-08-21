@@ -10,7 +10,7 @@
 #include "GAudioOutput.h"
 #include "ArduPilotMegaMAV.h"
 
-//, Qt::WindowFlags flags
+#include <QFileDialog>
 
 QGCSettingsWidget::QGCSettingsWidget(QWidget *parent, Qt::WindowFlags flags) :
     QDialog(parent, flags),
@@ -20,14 +20,14 @@ QGCSettingsWidget::QGCSettingsWidget(QWidget *parent, Qt::WindowFlags flags) :
     ui->setupUi(this);
 
     // Add all protocols
-    QList<ProtocolInterface*> protocols = LinkManager::instance()->getProtocols();
+    /*QList<ProtocolInterface*> protocols = LinkManager::instance()->getProtocols();
     foreach (ProtocolInterface* protocol, protocols) {
         MAVLinkProtocol* mavlink = dynamic_cast<MAVLinkProtocol*>(protocol);
         if (mavlink) {
             MAVLinkSettingsWidget* msettings = new MAVLinkSettingsWidget(mavlink, this);
             ui->tabWidget->addTab(msettings, "MAVLink");
         }
-    }
+    }*/
 
     this->window()->setWindowTitle(tr("APM Planner 2 Settings"));
 
@@ -36,6 +36,8 @@ QGCSettingsWidget::QGCSettingsWidget(QWidget *parent, Qt::WindowFlags flags) :
 
 void QGCSettingsWidget::showEvent(QShowEvent *evt)
 {
+    Q_UNUSED(evt)
+
     if (!m_init)
     {
         m_init = true;
@@ -52,20 +54,33 @@ void QGCSettingsWidget::showEvent(QShowEvent *evt)
         ui->lowPowerCheckBox->setChecked(MainWindow::instance()->lowPowerModeEnabled());
         connect(ui->lowPowerCheckBox, SIGNAL(clicked(bool)), MainWindow::instance(), SLOT(enableLowPowerMode(bool)));
 
+        // Automatic use of system Proxies
+        ui->autoProxyCheckBox->setChecked(MainWindow::instance()->autoProxyModeEnabled());
+        connect(ui->autoProxyCheckBox, SIGNAL(clicked(bool)), MainWindow::instance(), SLOT(enableAutoProxyMode(bool)));
+        connect(MainWindow::instance(), SIGNAL(autoProxyChanged(bool)), ui->autoProxyCheckBox, SLOT(setChecked(bool)));
+
         //Dock widget title bars
         ui->titleBarCheckBox->setChecked(MainWindow::instance()->dockWidgetTitleBarsEnabled());
         connect(ui->titleBarCheckBox,SIGNAL(clicked(bool)),MainWindow::instance(),SLOT(enableDockWidgetTitleBars(bool)));
+
+        ui->heartbeatCheckBox->setChecked(MainWindow::instance()->heartbeatEnabled());
+        connect(ui->heartbeatCheckBox,SIGNAL(clicked(bool)),MainWindow::instance(),SLOT(enableHeartbeat(bool)));
+
+        ui->mavlinkLoggingCheckBox->setChecked(LinkManager::instance()->loggingEnabled());
+        connect(ui->mavlinkLoggingCheckBox,SIGNAL(clicked(bool)),LinkManager::instance(),SLOT(enableLogging(bool)));
 
         ui->logDirEdit->setText(QGC::logDirectory());
 
         ui->appDataDirEdit->setText((QGC::appDataDirectory()));
         ui->paramDirEdit->setText(QGC::parameterDirectory());
         ui->mavlinkLogDirEdit->setText((QGC::MAVLinkLogDirectory()));
+        ui->missionsDirEdit->setText((QGC::missionDirectory()));
 
         connect(ui->logDirSetButton, SIGNAL(clicked()), this, SLOT(setLogDir()));
         connect(ui->appDirSetButton, SIGNAL(clicked()), this, SLOT(setAppDataDir()));
         connect(ui->paramDirSetButton, SIGNAL(clicked()), this, SLOT(setParamDir()));
         connect(ui->mavlinkDirSetButton, SIGNAL(clicked()), this, SLOT(setMAVLinkLogDir()));
+        connect(ui->missionsSetButton, SIGNAL(clicked()), this, SLOT(setMissionsDir()));
 
         // Style
         MainWindow::QGC_MAINWINDOW_STYLE style = (MainWindow::QGC_MAINWINDOW_STYLE)MainWindow::instance()->getStyle();
@@ -92,10 +107,21 @@ void QGCSettingsWidget::showEvent(QShowEvent *evt)
         connect(ui->rcChannelDataLineEdit, SIGNAL(editingFinished()), this, SLOT(ratesChanged()));
         connect(ui->rawSensorLineEdit, SIGNAL(editingFinished()), this, SLOT(ratesChanged()));
 
-        connect(UASManager::instance(),SIGNAL(activeUASSet(UASInterface*)),this,SLOT(activeUASSet(UASInterface*)));
+        connect(UASManager::instance(),SIGNAL(activeUASSet(UASInterface*)),this,SLOT(setActiveUAS(UASInterface*)));
         setActiveUAS(UASManager::instance()->getActiveUAS());
 
         setDataRateLineEdits();
+
+        QSettings settings;
+        settings.beginGroup("AUTO_UPDATE");
+        if(!settings.value("RELEASE_TYPE", "stable").toString().contains("stable")){
+            ui->enableBetaReleaseCheckBox->setChecked(true);
+        }
+        settings.endGroup();
+        connect(ui->enableBetaReleaseCheckBox, SIGNAL(clicked(bool)), this, SLOT(setBetaRelease(bool)));
+
+        ui->hideDonateButtonCheckBox->setChecked(settings.value("USER_DONATED", false).toBool());
+        connect(ui->hideDonateButtonCheckBox, SIGNAL(clicked(bool)), this, SLOT(setHideDonateButton(bool)));
     }
 }
 
@@ -106,7 +132,7 @@ QGCSettingsWidget::~QGCSettingsWidget()
 
 void QGCSettingsWidget::setLogDir()
 {
-    QFileDialog dlg(this);
+    QFileDialog dlg(this, "Set log output directory");
     dlg.setFileMode(QFileDialog::Directory);
     dlg.setDirectory(QGC::logDirectory());
 
@@ -120,7 +146,7 @@ void QGCSettingsWidget::setLogDir()
 
 void QGCSettingsWidget::setMAVLinkLogDir()
 {
-    QFileDialog dlg(this);
+    QFileDialog dlg(this, "Set tlog output directory");
     dlg.setFileMode(QFileDialog::Directory);
     dlg.setDirectory(QGC::MAVLinkLogDirectory());
 
@@ -134,7 +160,7 @@ void QGCSettingsWidget::setMAVLinkLogDir()
 
 void QGCSettingsWidget::setParamDir()
 {
-    QFileDialog dlg(this);
+    QFileDialog dlg(this, "Set parameters directory");
     dlg.setFileMode(QFileDialog::Directory);
     dlg.setDirectory(QGC::parameterDirectory());
 
@@ -148,7 +174,7 @@ void QGCSettingsWidget::setParamDir()
 
 void QGCSettingsWidget::setAppDataDir()
 {
-    QFileDialog dlg(this);
+    QFileDialog dlg(this, "Set application data directory");
     dlg.setFileMode(QFileDialog::Directory);
     dlg.setDirectory(QGC::appDataDirectory());
 
@@ -157,6 +183,20 @@ void QGCSettingsWidget::setAppDataDir()
         QString name = dir.absolutePath();
         QGC::setAppDataDirectory(name);
         ui->appDataDirEdit->setText(name);
+    }
+}
+
+void QGCSettingsWidget::setMissionsDir()
+{
+    QFileDialog dlg(this, "Set missions directory");
+    dlg.setFileMode(QFileDialog::Directory);
+    dlg.setDirectory(QGC::missionDirectory());
+
+    if(dlg.exec() ==  QDialog::Accepted) {
+        QDir dir = dlg.directory();
+        QString name = dir.absolutePath();
+        QGC::setMissionDirectory(name);
+        ui->missionsDirEdit->setText(name);
     }
 }
 
@@ -236,4 +276,25 @@ void QGCSettingsWidget::ratesChanged()
             mav->RequestAllDataStreams();
         }
     }
+}
+
+void QGCSettingsWidget::setBetaRelease(bool state)
+{
+    QString type;
+    QSettings settings;
+    settings.beginGroup("AUTO_UPDATE");
+    if (state == true){
+        type = "beta";
+    } else {
+        type = "stable";
+    }
+    settings.setValue("RELEASE_TYPE", type);
+    settings.sync();
+}
+
+void QGCSettingsWidget::setHideDonateButton(bool state)
+{
+    QSettings settings;
+    settings.setValue("USER_DONATED", state);
+    settings.sync();
 }

@@ -52,8 +52,8 @@ ArduCopterPidConfig::ArduCopterPidConfig(QWidget *parent) : AP2ConfigWidget(pare
     connect(ui.rateRollIMAXSpinBox,SIGNAL(valueChanged(double)),this,SLOT(rateIMAXChanged(double)));
 
 
-    m_nameToBoxMap["STB_RLL_P"] = ui.stabilPitchPSpinBox;
-    m_nameToBoxMap["STB_PIT_P"] = ui.stabilRollPSpinBox;
+    m_nameToBoxMap["STB_RLL_P"] = ui.stabilRollPSpinBox;
+    m_nameToBoxMap["STB_PIT_P"] = ui.stabilPitchPSpinBox;
     m_nameToBoxMap["STB_YAW_P"] = ui.stabilYawPSpinBox;
     m_nameToBoxMap["HLD_LAT_P"] = ui.loiterPidPSpinBox;
 
@@ -87,10 +87,10 @@ ArduCopterPidConfig::ArduCopterPidConfig(QWidget *parent) : AP2ConfigWidget(pare
 
     m_nameToBoxMap["THR_ALT_P"] = ui.altitudeHoldPSpinBox;
 
-    m_nameToBoxMap["WPNAV_SPEED"] = ui.wpNavLoiterSpeedSpinBox;
+    m_nameToBoxMap["WPNAV_SPEED"] = ui.wpNavSpeedSpinBox;
     m_nameToBoxMap["WPNAV_RADIUS"] = ui.wpNavRadiusSpinBox;
     m_nameToBoxMap["WPNAV_SPEED_DN"] = ui.wpNavSpeedDownSpinBox;
-    m_nameToBoxMap["WPNAV_LOIT_SPEED"] = ui.wpNavSpeedSpinBox;
+    m_nameToBoxMap["WPNAV_LOIT_SPEED"] = ui.wpNavLoiterSpeedSpinBox;
     m_nameToBoxMap["WPNAV_SPEED_UP"] = ui.wpNavSpeedUpSpinBox;
 
     //m_nameToBoxMap["TUNE_HIGH"] = ui.ch6MaxSpinBox;
@@ -98,8 +98,6 @@ ArduCopterPidConfig::ArduCopterPidConfig(QWidget *parent) : AP2ConfigWidget(pare
 
     connect(ui.writePushButton,SIGNAL(clicked()),this,SLOT(writeButtonClicked()));
     connect(ui.refreshPushButton,SIGNAL(clicked()),this,SLOT(refreshButtonClicked()));
-
-
 
     m_ch6ValueToTextList.append(QPair<int,QString>(0,"CH6_NONE"));
     m_ch6ValueToTextList.append(QPair<int,QString>(1,"CH6_STABILIZE_KP"));
@@ -135,6 +133,21 @@ ArduCopterPidConfig::ArduCopterPidConfig(QWidget *parent) : AP2ConfigWidget(pare
     m_ch6ValueToTextList.append(QPair<int,QString>(36,"CH6_THR_ACCEL_KD"));
     m_ch6ValueToTextList.append(QPair<int,QString>(38,"CH6_DECLINATION"));
     m_ch6ValueToTextList.append(QPair<int,QString>(39,"CH6_CIRCLE_RATE"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(41,"CH6_SONAR_GAIN"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(42,"CH6_EKF_VERTICAL_POS"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(43,"CH6_EKF_HORIZONTAL_POS"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(44,"CH6_EKF_ACCEL_NOISE"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(45,"CH6_RC_FEEL_RP"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(46,"CH6_RATE_PITCH_KP"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(47,"CH6_RATE_PITCH_KI"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(48,"CH6_RATE_PITCH_KD"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(49,"CH6_RATE_ROLL_KP"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(50,"CH6_RATE_ROLL_KI"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(51,"CH6_RATE_ROLL_KD"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(52,"CH6_RATE_PITCH_FF"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(53,"CH6_RATE_ROLL_FF"));
+    m_ch6ValueToTextList.append(QPair<int,QString>(54,"CH6_RATE_YAW_FF"));
+
     for (int i=0;i<m_ch6ValueToTextList.size();i++)
     {
         ui.ch6OptComboBox->addItem(m_ch6ValueToTextList[i].second);
@@ -153,9 +166,19 @@ ArduCopterPidConfig::ArduCopterPidConfig(QWidget *parent) : AP2ConfigWidget(pare
     m_ch78ValueToTextList.append(QPair<int,QString>(12,"ResetToArmedYaw"));
     m_ch78ValueToTextList.append(QPair<int,QString>(13,"Super Simple Mode"));
     m_ch78ValueToTextList.append(QPair<int,QString>(14,"Acro Trainer"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(15,"Sprayer"));
     m_ch78ValueToTextList.append(QPair<int,QString>(16,"Auto"));
     m_ch78ValueToTextList.append(QPair<int,QString>(17,"Auto Tune"));
     m_ch78ValueToTextList.append(QPair<int,QString>(18,"Land"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(19,"EPM Cargo Gripper"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(20,"Enable NavEKF"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(21,"Parachute Enable"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(22,"Parachute Release"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(23,"Parachute 3POS switch"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(24,"Mission Reset"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(25,"Roll/Pitch FF enable"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(26,"Accel Limiting Enable"));
+    m_ch78ValueToTextList.append(QPair<int,QString>(27,"Retract Mount"));
 
     for (int i=0;i<m_ch78ValueToTextList.size();i++)
     {
@@ -165,6 +188,22 @@ ArduCopterPidConfig::ArduCopterPidConfig(QWidget *parent) : AP2ConfigWidget(pare
 
     initConnections();
 }
+
+void ArduCopterPidConfig::showEvent(QShowEvent *evt){
+    requestParameterUpdate();
+    QWidget::showEvent(evt);
+}
+
+void ArduCopterPidConfig::requestParameterUpdate() {
+    QStringList params = m_nameToBoxMap.keys();
+    QLOG_DEBUG() << "ArduCopter PID Params (fetch): " << params;
+
+    QGCUASParamManager *pm = m_uas->getParamManager();
+    foreach(QString parameter, params) {
+        pm->requestParameterUpdate(1, parameter);
+    };
+}
+
 void ArduCopterPidConfig::lockCheckBoxClicked(bool checked)
 {
     m_pitchRollLocked = checked;
@@ -235,6 +274,9 @@ ArduCopterPidConfig::~ArduCopterPidConfig()
 }
 void ArduCopterPidConfig::parameterChanged(int uas, int component, QString parameterName, QVariant value)
 {
+    Q_UNUSED(uas)
+    Q_UNUSED(component)
+
     if (m_nameToBoxMap.contains(parameterName))
     {
         m_nameToBoxMap[parameterName]->setValue(value.toDouble());

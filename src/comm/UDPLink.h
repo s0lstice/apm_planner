@@ -38,6 +38,9 @@ This file is part of the QGROUNDCONTROL project
 #include <QUdpSocket>
 #include <LinkInterface.h>
 #include <configuration.h>
+#include <QQueue>
+#include <QByteArray>
+#include <QNetworkProxy>
 
 class UDPLink : public LinkInterface
 {
@@ -46,14 +49,14 @@ class UDPLink : public LinkInterface
 
 public:
     UDPLink(QHostAddress host = QHostAddress::Any, quint16 port = 14550);
-    //UDPLink(QHostAddress host = "239.255.76.67", quint16 port = 7667);
+
     ~UDPLink();
-    void disableTimeouts() { };
-    void enableTimeouts() { };
+    void disableTimeouts() { }
+    void enableTimeouts() { }
 
     void requestReset() { }
 
-    bool isConnected();
+    bool isConnected() const;
     qint64 bytesAvailable();
     int getPort() const {
         return port;
@@ -62,33 +65,32 @@ public:
     /**
      * @brief The human readable port name
      */
-    QString getName();
-    int getBaudRate();
-    int getBaudRateType();
-    int getFlowType();
-    int getParityType();
-    int getDataBitsType();
-    int getStopBitsType();
-    QList<QHostAddress> getHosts() {
+    QString getName() const;
+    QString getShortName() const;
+    QString getDetail() const;
+    int getBaudRate() const;
+    int getBaudRateType() const;
+    int getFlowType() const;
+    int getParityType() const;
+    int getDataBitsType() const;
+    int getStopBitsType() const;
+    QList<QHostAddress> getHosts() const {
         return hosts;
     }
+    QList<quint16> getPorts() const {
+        return ports;
+    }
 
-    /* Extensive statistics for scientific purposes */
-    qint64 getNominalDataRate();
-    qint64 getTotalUpstream();
-    qint64 getCurrentUpstream();
-    qint64 getMaxUpstream();
-    qint64 getTotalDownstream();
-    qint64 getCurrentDownstream();
-    qint64 getMaxDownstream();
-    qint64 getBitsSent();
-    qint64 getBitsReceived();
+    // Extensive statistics for scientific purposes
+    qint64 getConnectionSpeed() const;
+    qint64 getCurrentInDataRate() const;
+    qint64 getCurrentOutDataRate() const;
 
     void run();
 
-    int getLinkQuality();
-    bool isFullDuplex();
-    int getId();
+    int getId() const;
+
+    LinkType getLinkType() { return UDP_LINK; }
 
 public slots:
     void setAddress(QHostAddress host);
@@ -110,24 +112,17 @@ public slots:
     bool connect();
     bool disconnect();
 
-protected:
+private:
     QString name;
     QHostAddress host;
     quint16 port;
     int id;
     QUdpSocket* socket;
     bool connectState;
+    bool _shouldRestartConnection;
     QList<QHostAddress> hosts;
     QList<quint16> ports;
 
-    quint64 bitsSentTotal;
-    quint64 bitsSentCurrent;
-    quint64 bitsSentMax;
-    quint64 bitsReceivedTotal;
-    quint64 bitsReceivedCurrent;
-    quint64 bitsReceivedMax;
-    quint64 connectionStartTime;
-    QMutex statisticsMutex;
     QMutex dataMutex;
 
     void setName(QString name);
@@ -135,8 +130,13 @@ protected:
 private:
 	bool hardwareConnect(void);
 
-signals:
-    //Signals are defined by LinkInterface
+    bool                _running;
+    QMutex              _mutex;
+    QQueue<QByteArray*> _outQueue;
+
+    bool _dequeBytes    ();
+    void _sendBytes     (const char* data, qint64 size);
+
 
 };
 

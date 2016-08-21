@@ -33,24 +33,26 @@ This file is part of the QGROUNDCONTROL project
 
 #include "AutoUpdateCheck.h"
 #include "AutoUpdateDialog.h"
-#include <QtGui/QMainWindow>
+#include <QtWidgets/QMainWindow>
 #include <QStatusBar>
 #include <QStackedWidget>
 #include <QSettings>
 #include <qlist.h>
+#include <QNetworkProxy>
 
 #include "ui_MainWindow.h"
-#include "LinkManager.h"
+//#include "LinkManager.h"
 #include "LinkInterface.h"
 #include "UASInterface.h"
 #include "UASManager.h"
 #include "UASControlWidget.h"
-#include "Linecharts.h"
 #include "UASInfoWidget.h"
 #include "WaypointList.h"
+#if (defined ENABLE_CAMRAVIW)
 #include "CameraView.h"
+#endif // ENABLE_CAMRAVIW
 #include "UASListWidget.h"
-#include "MAVLinkProtocol.h"
+//#include "MAVLinkProtocol.h"
 #include "MAVLinkSimulationLink.h"
 #include "ObjectDetectionView.h"
 #include "HUD.h"
@@ -60,16 +62,13 @@ This file is part of the QGROUNDCONTROL project
 #if (defined MOUSE_ENABLED_WIN) | (defined MOUSE_ENABLED_LINUX)
 #include "Mouse6dofInput.h"
 #endif // MOUSE_ENABLED_WIN
-#include "DebugConsole.h"
 #include "ParameterInterface.h"
 #include "XMLCommProtocolWidget.h"
 #include "HDDisplay.h"
 #include "WatchdogControl.h"
 #include "HSIDisplay.h"
-#include "QGCDataPlot2D.h"
-#include "QGCRemoteControlView.h"
 #include "opmapcontrol.h"
-#if (defined Q_OS_MAC) | (defined _MSC_VER)
+#if (defined GOGGLEEARTH) && ((defined Q_OS_MAC) | (defined _MSC_VER))
 #include "QGCGoogleEarthView.h"
 #endif
 #include "QGCToolBar.h"
@@ -79,7 +78,6 @@ This file is part of the QGROUNDCONTROL project
 #include "SlugsHilSim.h"
 
 #include "SlugsPadCameraControl.h"
-#include "UASControlParameters.h"
 #include "QGCMAVLinkInspector.h"
 #include "QGCMAVLinkLogPlayer.h"
 #include "QGCVehicleConfig.h"
@@ -94,6 +92,67 @@ class QGCMAVLinkMessageSender;
 class QGCFirmwareUpdate;
 class QSplashScreen;
 class QGCStatusBar;
+
+/**
+ * @brief The LogWindowSingleton class is a helper class providing
+ *        an entry point to the debug console widget used by the
+ *        loggingMessageHandler. Due to the fact that the debug widget
+ *        is created in MainWindow::buildCommonWidgets() it is not
+ *        available when the messagehandler is created and installed.
+ *        This class provides a write method which is available directly
+ *        after the start of APM-Planner and a message buffering for
+ *        all logmessages wich are printet before the debug console widget
+ *        becomes available.
+ *
+ * @attention This class is NOT thread safe nor is it reentrant.
+ *            Should only be used by the loggingMessageHandler
+ */
+class LogWindowSingleton
+{
+public:
+    /**
+     * @brief instance method providing the static entry
+     *        for the loggingMessageHandler.
+     *
+     * @return A reference to the LogWindowSingleton.
+     */
+    static LogWindowSingleton &instance();
+
+    /**
+     * @brief The write method writes the "message" to the debug
+     *        widget, buffering all messages until the debug widget
+     *        is created.
+     * @param message - QString containing the message to print.
+     */
+    void write(const QString &message);
+
+    /**
+     * @brief setDebugOutput must be called after creating the
+     *        DebugOutput widget.
+     * @param outputPtr - SmartPointer to the DebugOutput widget object.
+     */
+    void setDebugOutput(DebugOutput::Ptr outputPtr);
+
+    /**
+     * @brief removeDebugOutput must be called when the program terminates
+     *        in order to release the DebugOutput widget object. Should be
+     *        done before the MainWindow terminates eg. in DTOR
+     */
+    void removeDebugOutput();
+
+private:
+    /**
+     * @brief LogWindowSingleton CTOR must be private.
+     */
+    LogWindowSingleton() : m_startupBuffering(true) {}
+
+    DebugOutput::Ptr m_debugPtr;    /// SmartPointer to the DebugOutput widget
+    QStringList m_outPutBuffer;     /// Buffer for startup buffering
+    bool m_startupBuffering;        /// Used to avoid buffering after a removeDebugOutput call
+};
+
+
+
 
 /**
  * @brief Main Application Window
@@ -122,6 +181,8 @@ public:
     bool dockWidgetTitleBarsEnabled();
     /** @brief Get low power mode setting */
     bool lowPowerModeEnabled();
+    /** @brief Get Auto Prox mode setting */
+    bool autoProxyModeEnabled();
 
     QList<QAction*> listLinkMenuActions(void);
 
@@ -143,9 +204,10 @@ public slots:
     /** @brief Show the application About box */
     void showAbout();
     /** @brief Add a communication link */
-    LinkInterface* addLink();
-    void addLink(LinkInterface* link);
-    bool configLink(LinkInterface *link);
+    void addLink();
+    void addLink(int linkid);
+    bool configLink(int linkid);
+    void linkError(int linkid,QString errorstring);
     void configure();
     /** @brief Simulate a link */
     void simulateLink(bool simulate);
@@ -161,6 +223,7 @@ public slots:
     void startVideoCapture();
     void stopVideoCapture();
     void saveScreen();
+    void enableHeartbeat(bool enabled);
 
     /** @brief Sets advanced mode, allowing for editing of tool widget locations */
     void setAdvancedMode(bool mode);
@@ -195,12 +258,15 @@ public slots:
     void reloadStylesheet();
     /** @brief Let the user select the CSS style sheet */
     void selectStylesheet();
+    void selectStylesheetDialogAccepted();
     /** @breif Enable title bars on dock widgets when no in advanced mode */
     void enableDockWidgetTitleBars(bool enabled);
     /** @brief Automatically reconnect last link */
     void enableAutoReconnect(bool enabled);
     /** @brief Save power by reducing update rates */
     void enableLowPowerMode(bool enabled) { lowPowerMode = enabled; }
+    /** @brief Use the system proxy for network connections automatically */
+    void enableAutoProxyMode(bool enabled);
     /** @brief Switch to native application style */
     void loadNativeStyle();
     /** @brief Switch to indoor mission style */
@@ -263,6 +329,7 @@ signals:
     /** @brief Forward X11Event to catch 3DMouse inputs */
     void x11EventOccured(XEvent *event);
 #endif //MOUSE_ENABLED_LINUX
+    void autoProxyChanged(bool);
 
 public:
     QGCMAVLinkLogPlayer* getLogPlayer()
@@ -270,11 +337,13 @@ public:
         return logPlayer;
     }
 
-    MAVLinkProtocol* getMAVLink()
-    {
-        return mavlink;
-    }
+    //MAVLinkProtocol* getMAVLink()
+    //{
+    //    return mavlink;
+    //}
 
+
+    bool heartbeatEnabled() { return m_heartbeatEnabled; }
 protected:
 
     MainWindow(QWidget *parent = 0);
@@ -345,7 +414,7 @@ protected:
     void storeSettings();
 
     // TODO Should be moved elsewhere, as the protocol does not belong to the UI
-    QPointer<MAVLinkProtocol> mavlink;
+    //QPointer<MAVLinkProtocol> mavlink;
 
     QPointer<MAVLinkSimulationLink> simulationLink;
     QPointer<LinkInterface> udpLink;
@@ -363,10 +432,9 @@ protected:
     QPointer<SubMainWindow> engineeringView;
     QPointer<SubMainWindow> simView;
     QPointer<SubMainWindow> terminalView;
-    QPointer<DebugOutput> debugOutput;
+    DebugOutput::Ptr debugOutput;
 
     // Center widgets
-    QPointer<Linecharts> linechartWidget;
     //QPointer<HUD> hudWidget;
     //QPointer<QGCVehicleConfig> configWidget;
     //QPointer<QGCMapTool> mapWidget;
@@ -375,7 +443,7 @@ protected:
 #ifdef QGC_OSG_ENABLED
     QPointer<QWidget> q3DWidget;
 #endif
-#if (defined _MSC_VER) || (defined Q_OS_MAC)
+#if (defined GOOGLEEARTH) && ((defined _MSC_VER) || (defined Q_OS_MAC))
     QPointer<QGCGoogleEarthView> earthWidget;
 #endif
     QPointer<QGCFirmwareUpdate> firmwareUpdateWidget;
@@ -388,7 +456,6 @@ protected:
     QPointer<QDockWidget> listDockWidget;
     QPointer<QDockWidget> waypointsDockWidget;
     QPointer<QDockWidget> detectionDockWidget;
-    QPointer<QDockWidget> debugConsoleDockWidget;
     QPointer<QDockWidget> parametersDockWidget;
     QPointer<QDockWidget> headDown1DockWidget;
     QPointer<QDockWidget> headDown2DockWidget;
@@ -416,7 +483,6 @@ protected:
 
     QPointer<QGCStatusBar> customStatusBar;
 
-    QPointer<DebugConsole> debugConsole;
 
     QPointer<QDockWidget> mavlinkInspectorWidget;
     QPointer<MAVLinkDecoder> mavlinkDecoder;
@@ -458,14 +524,20 @@ protected:
     bool autoReconnect;
     Qt::WindowStates windowStateVal;
     bool lowPowerMode; ///< If enabled, QGC reduces the update rates of all widgets
+    bool autoProxyMode;
     QPointer<QGCFlightGearLink> fgLink;
     QTimer windowNameUpdateTimer;
 
 private slots:
     void showAutoUpdateDownloadDialog(QString version, QString releaseType, QString url, QString name);
     void autoUpdateCancelled(QString version);
+    void showNoUpdateAvailDialog();
+
+    void showTerminalConsole();
+    void closeTerminalConsole();
 
 private:
+    bool m_heartbeatEnabled;
     QList<QObject*> commsWidgetList;
     QMap<QString,QString> customWidgetNameToFilenameMap;
     QMap<QAction*,QString > menuToDockNameMap;
@@ -480,6 +552,8 @@ private:
 
     AutoUpdateCheck m_autoUpdateCheck;
     AutoUpdateDialog* m_dialog;
+
+    QDialog* m_terminalDialog;
 
 };
 

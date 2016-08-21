@@ -2,37 +2,92 @@
 #define PX4FIRMWAREUPLOADER_H
 
 #include <QThread>
-#include <qserialport.h>
-#include <QFile>
+#include <QSerialPort>
+#include <QTimer>
 #include <QTemporaryFile>
-#include <QDebug>
-//#include <qjson/parser.h>
-#include <QStringList>
 class PX4FirmwareUploader : public QThread
 {
     Q_OBJECT
 public:
     explicit PX4FirmwareUploader(QObject *parent = 0);
-    bool loadFile(QString file);
+    enum State
+    {
+        INIT,
+        REQ_DEVICE_INFO,
+        REQ_OTP,
+        REQ_SN,
+        SEND_FW,
+        REQ_CHECKSUM
+    };
     void stop();
-protected:
-    void run();
+    void loadFile(QString filename);
+
 private:
-    bool m_stop;
+    bool checkCOA(const QByteArray& serial, const QByteArray& signature, const QString& publicKey);
+
+private:
+    QList<QString> m_portlist;
+    QString m_portToUse;
     QSerialPort *m_port;
-    QByteArray m_serialBuffer;
-    int get_sync(int timeout=1000);
-    bool reqInfo(unsigned char infobyte,unsigned int *reply);
-    int readBytes(int num,int timeout,QByteArray &buf);
-    unsigned int m_loadedBoardID;
-    unsigned int m_loadedFwSize;
-    QString m_loadedDescription;
+
+    bool m_waitingForSync;
+
+    QList<unsigned char> m_devInfoList;
+    QTimer *m_checkTimer;
+    State m_currentState;
+
+    bool getSync();
+    bool verifyOtp();
+
+    bool reqNextOtpAddress();
+    void getOtpAddress(int address);
+    bool readOtp();
+    int m_currentOtpAddress;
+    QByteArray m_otpBytes;
+
+    bool reqNextSNAddress();
+    void getSNAddress(int address);
+    bool readSN();
+    int m_currentSNAddress;
+    QByteArray m_snBytes;
+    int m_fwBytesCounter;
+
+    bool reqNextDeviceInfo();
+    void getDeviceInfo(unsigned char infobyte);
+    bool readDeviceInfo();
+    int m_waitingDeviceInfoVar;
+
+    bool sendNextFwBytes();
+
+    void reqReboot();
+
+    void reqChecksum();
+    bool readChecksum();
+    quint32 m_checksum;
+    quint32 m_localChecksum;
+    int m_flashSize;
+    QByteArray m_toflashbytes;
+
+
+
+    void reqErase();
+    QTimer *m_eraseTimeoutTimer;
+    int m_eraseTimerCounter;
+
+
+    void reqFlash();
     QTemporaryFile *tempFile;
-    QTemporaryFile *tempJsonFile;
+
+
+
 signals:
+    void kickOff();
+    void gotDeviceInfo(unsigned char devinfo,unsigned int reply);
+
+
     void requestDevicePlug();
     void devicePlugDetected();
-    void done();
+    void complete();
     void serialNumber(QString sn);
     void OTP(QString otp);
     void boardRev(int rev);
@@ -43,7 +98,16 @@ signals:
     void error(QString error);
     void statusUpdate(QString status);
     void debugUpdate(QString debug);
+    void warning(QString message);
+
+
+
 public slots:
+private slots:
+    void kickOffTriggered();
+    void portReadyRead();
+    void checkForPort();
+    void eraseSyncCheck();
 
 };
 

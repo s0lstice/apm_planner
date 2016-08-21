@@ -39,9 +39,15 @@ This file is part of the APM_PLANNER project
 #include "UASManager.h"
 #include "UASInterface.h"
 #include "AP2ConfigWidget.h"
+
 class RadioCalibrationConfig : public AP2ConfigWidget
 {
     Q_OBJECT
+
+    static const int RC_CHANNEL_PWM_MIN = 850; // Spektrum DX6i reports 898 on ch7 even though its 6 channels
+    static const int RC_CHANNEL_PWM_MAX = 2100;
+    static const int RC_CHANNEL_NUM_MAX = 8;
+    static const int RC_CHANNEL_LOWER_CONTROL_CH_MAX = 4;
     
 public:
     explicit RadioCalibrationConfig(QWidget *parent = 0);
@@ -55,18 +61,50 @@ private slots:
     void parameterChanged(int uas, int component, QString parameterName, QVariant value);
     void guiUpdateTimerTick();
     void calibrateButtonClicked();
+
+    void pitchClicked(bool state);
+    void rollClicked(bool state);
+    void yawClicked(bool state);
+    void throttleClicked(bool state);
+
+    void elevonsChecked(bool state);
+    void elevonsReversed(bool state);
+    void elevonsCh1Rev(bool state);
+    void elevonsCh2Rev(bool state);
+    void elevonOutput();
+
+    void modeIndexChanged(int index);
+
 private:
+    void updateChannelReversalStates();
+    void setParamChannelRev(const QString& param, bool state);
+    void updateChannelRevState(QCheckBox *checkbox, int channelId);
+    void readSettings();
+    void writeSettings();
+    bool isRadioControlActive();
+    bool isInRange(double value, double min, double max);
+    bool validRadioSettings();
+
+private:
+    Ui::RadioCalibrationConfig ui;
     QList<double> rcMin;
     QList<double> rcMax;
     QList<double> rcTrim;
     QList<double> rcValue;
-    //double rcMin[8];
-    //double rcMax[8];
-    //double rcTrim[8];
-    //double rcValue[8];
+
     QTimer *guiUpdateTimer;
     bool m_calibrationEnabled;
-    Ui::RadioCalibrationConfig ui;
+
+    int m_pitchChannel;
+    int m_rollChannel;
+    int m_yawChannel;
+    int m_throttleChannel;
+
+    QGCRadioChannelDisplay* m_pitchWidget;
+    QGCRadioChannelDisplay* m_throttleWidget;
+    QCheckBox* m_pitchCheckBox;
+    QCheckBox* m_throttleCheckBox;
+    int m_rcMode;
 };
 
 #endif // RADIOCALIBRATIONCONFIG_H

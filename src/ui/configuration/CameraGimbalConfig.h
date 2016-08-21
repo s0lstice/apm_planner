@@ -68,6 +68,7 @@ class CameraGimbalConfig : public AP2ConfigWidget
 public:
     explicit CameraGimbalConfig(QWidget *parent = 0);
     ~CameraGimbalConfig();
+    void showEvent(QShowEvent *);
 
 public slots:
     void activeUASSet(UASInterface *uas);
@@ -90,6 +91,8 @@ private slots:
     void updateNeutralAngles();
     void updateControlAngles();
 
+    void updateMountMode(int index);
+
 private:
     void initConnections();
     void connectSignals();
@@ -107,7 +110,8 @@ private:
                                   const QString& mountType, int rcFunction,
                                   QComboBox *outputChCombo, QComboBox* inputChCombo,
                                   QSpinBox* servoMin, QSpinBox* servoMax, QCheckBox* servoReverse,
-                                  QSpinBox* angleMin, QSpinBox* angleMax);
+                                  QSpinBox* angleMin, QSpinBox* angleMax, QCheckBox *stabilize);
+    void requestParameterUpdate();
 
 private:
     Ui::CameraGimbalConfig ui;

@@ -43,6 +43,7 @@ This file is part of the QGROUNDCONTROL project
 enum qgc_link_t {
     QGC_LINK_SERIAL,
     QGC_LINK_UDP,
+    QGC_LINK_UDP_CLIENT,
     QGC_LINK_TCP,
     QGC_LINK_SIMULATION,
     QGC_LINK_FORWARDING,
@@ -71,16 +72,13 @@ class CommConfigurationWindow : public QDialog
     Q_OBJECT
 
 public:
-    CommConfigurationWindow(LinkInterface* link, ProtocolInterface* protocol, QWidget *parent = 0);
+    CommConfigurationWindow(int linkid, ProtocolInterface* protocol, QWidget *parent = 0);
     ~CommConfigurationWindow();
 
     QAction* getAction();
 
-private slots:
-    void linkCurrentIndexChanged(int currentIndex);
-
+    void connectButtonStatus(int linkid);
 public slots:
-    void setLinkType(qgc_link_t linktype);
     /** @brief Set the protocol for this link */
     void setProtocol(int protocol);
     void setConnection();
@@ -88,11 +86,11 @@ public slots:
     void setLinkName(QString name);
     /** @brief Disconnects the associated link, removes it from all menus and closes the window. */
     void remove();
-
+    void linkUpdate(int linkid);
 private:
 
     Ui::commSettings ui;
-    QPointer<LinkInterface> link;
+    int m_linkid;
     QPointer<QAction> action;
 };
 

@@ -47,11 +47,12 @@ This file is part of the APM_PLANNER project
 #include "UASInterface.h"
 #include "UASManager.h"
 
-#include "qserialport.h"
+#include <QtSerialPort/qserialport.h>
 #include "SerialSettingsDialog.h"
 #include "ui_ApmFirmwareConfig.h"
 #include "PX4FirmwareUploader.h"
 #include "arduinoflash.h"
+#include <QFileDialog>
 
 class ApmFirmwareConfig : public AP2ConfigWidget
 {
@@ -91,8 +92,9 @@ private slots:
     void requestDeviceReplug();
     void devicePlugDetected();
     void px4Error(QString error);
+    void px4Warning(QString message);
     void px4Finished();
-    void px4Terminated();
+    void px4Cleanup();
     void px4StatusUpdate(QString update);
     void px4DebugUpdate(QString update);
     void px4UnplugTimerTick();
@@ -122,8 +124,10 @@ private:
     void compareVersionsForNotification(const QString &apmPlatform, const QString &newFwVersion);
     void addButtonStyleSheet(QWidget *parent);
 
-private:
+    void cleanUp();
     bool versionIsGreaterThan(QString verstr,double version);
+
+private:
     bool m_throwPropSpinWarning;
     QProgressDialog *m_replugRequestMessageBox;
     QTimer *m_px4UnplugTimer;
@@ -131,7 +135,6 @@ private:
     ArduinoFlash *m_arduinoUploader;
     QString m_firmwareType;
     QString m_autopilotType;
-    bool m_isPx4;
     int m_timeoutCounter;
     bool m_hasError;
     QPointer<UASInterface> m_uas;
@@ -164,7 +167,7 @@ private:
         int version;
     };
     QList<FirmwareDef> m_firmwareList;
-    QPointer<QTimer> m_timer;
+    QTimer m_timer;
 
     bool m_enableUpdateCheck;
     bool m_notificationOfUpdate;

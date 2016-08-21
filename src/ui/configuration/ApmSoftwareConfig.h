@@ -39,12 +39,16 @@ This file is part of the APM_PLANNER project
 #include "FailSafeConfig.h"
 #include "AdvancedParamConfig.h"
 #include "ArduCopterPidConfig.h"
+#include "CopterPidConfig.h"
 #include "ArduPlanePidConfig.h"
 #include "ArduRoverPidConfig.h"
 #include "AdvParameterList.h"
 #include "UASInterface.h"
 #include "UASManager.h"
 #include "QGCSettingsWidget.h"
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 
 class ApmSoftwareConfig : public QWidget
 {
@@ -59,8 +63,6 @@ public:
 
 public slots:
     void parameterChanged(int uas, int component, int parameterCount, int parameterId, QString parameterName, QVariant value);
-    void writeParameter(int component, QString parameterName, QVariant value);
-    void readParameter(int component, QString parameterName, QVariant value);
     void advModeChanged(bool state);
 
 private slots:
@@ -70,6 +72,9 @@ private slots:
     void uasDisconnected();
     void apmParamNetworkReplyFinished();
     void populateTimerTick();
+    void updateUAS();
+    void reloadView();
+
 private:
 
     //Parameter from XML
@@ -102,6 +107,7 @@ private:
     QPointer<GeoFenceConfig> m_geoFenceConfig;
     QPointer<AdvancedParamConfig> m_advancedParamConfig;
     QPointer<ArduCopterPidConfig> m_arduCopterPidConfig;
+    QPointer<CopterPidConfig> m_copterPidConfig;
     QPointer<ArduPlanePidConfig> m_arduPlanePidConfig;
     QPointer<ArduRoverPidConfig> m_arduRoverPidConfig;
     QPointer<AdvParameterList> m_advParameterList;
@@ -113,6 +119,11 @@ private:
     int m_paramTotalCount;
 
     bool m_isAdvancedMode;
+
+    QUrl m_url;
+    QNetworkAccessManager m_networkAccessManager;
+    QNetworkReply* m_networkReply;
+    int m_redirectCount;
 };
 
 #endif // APMSOFTWARECONFIG_H

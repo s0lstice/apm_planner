@@ -1,8 +1,10 @@
-#include "QsLog.h"
+#include "logging.h"
 #include "ArduPilotMegaMAV.h"
 #include "ApmUiHelpers.h"
 #include "UASActionsWidget.h"
 #include "APMShortcutModesDialog.h"
+#include "PreFlightCalibrationDialog.h"
+
 #include <QMessageBox>
 #include <UAS.h>
 #include <QSettings>
@@ -29,6 +31,7 @@ void UASActionsWidget::setupApmPlaneModes()
     ui.actionComboBox->addItem("Preflight Calibration", MAV_CMD_PREFLIGHT_CALIBRATION);
     ui.actionComboBox->addItem("Mission Start", MAV_CMD_MISSION_START);
     ui.actionComboBox->addItem("Preflight Reboot", MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN);
+    ui.actionComboBox->addItem("Trigger Camera", MAV_CMD_DO_DIGICAM_CONTROL);
 
 }
 
@@ -41,7 +44,7 @@ void UASActionsWidget::setupApmCopterModes()
     ui.armedStatuslabel->setVisible(true);
 
     // Setup configurable shortcut action
-    ui.opt1ModeButton->setText("none");
+    ui.opt1ModeButton->setText("Pos Hold");
     ui.opt2ModeButton->setText("Acro");
     ui.opt3ModeButton->setText("Alt Hold");
     ui.opt4ModeButton->setText("Land");
@@ -54,6 +57,7 @@ void UASActionsWidget::setupApmCopterModes()
     ui.actionComboBox->addItem("Preflight Calibration", MAV_CMD_PREFLIGHT_CALIBRATION);
     ui.actionComboBox->addItem("Mission Start", MAV_CMD_MISSION_START);
     ui.actionComboBox->addItem("Preflight Reboot", MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN);
+    ui.actionComboBox->addItem("Trigger Camera", MAV_CMD_DO_DIGICAM_CONTROL);
 }
 
 void UASActionsWidget::setupApmRoverModes()
@@ -78,6 +82,7 @@ void UASActionsWidget::setupApmRoverModes()
     ui.actionComboBox->addItem("Preflight Calibration", MAV_CMD_PREFLIGHT_CALIBRATION);
     ui.actionComboBox->addItem("Mission Start", MAV_CMD_MISSION_START);
     ui.actionComboBox->addItem("Preflight Reboot", MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN);
+    ui.actionComboBox->addItem("Trigger Camera", MAV_CMD_DO_DIGICAM_CONTROL);
 
 }
 
@@ -462,10 +467,10 @@ void UASActionsWidget::setAction()
 }
 
 
-int UASActionsWidget::preFlightWarningBox()
+int UASActionsWidget::preFlightWarningBox(QWidget* parent)
 {
     QLOG_INFO() << "Display Pre-Flight Warning Box";
-    return QMessageBox::critical(this,tr("Warning"),tr("This action must be done when on the gorund. If vehicle is in the air the this action will result in a crash!"),
+    return QMessageBox::critical(parent,tr("Warning"),tr("This action must be done when on the ground. If vehicle is in the air the this action will result in a crash!"),
                          QMessageBox::Ok,QMessageBox::Abort);
 }
 
@@ -501,7 +506,7 @@ void UASActionsWidget::sendApmPlaneCommand(MAV_CMD command)
         float param5 = 0.0; // Latitude
         float param6 = 0.0; // Longitude
         float param7 = 0.0; // Altitude
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -520,7 +525,7 @@ void UASActionsWidget::sendApmPlaneCommand(MAV_CMD command)
         float param5 = 0.0; // Latitude
         float param6 = 0.0; // Longitude
         float param7 = 0.0; // Altitude
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -529,24 +534,7 @@ void UASActionsWidget::sendApmPlaneCommand(MAV_CMD command)
 
     case MAV_CMD_PREFLIGHT_CALIBRATION: {
         // Trigger calibration. This command will be only accepted if in pre-flight mode.
-        Q_ASSERT(command == MAV_CMD_PREFLIGHT_CALIBRATION);
-        QLOG_INFO() << "MAV_CMD_PREFLIGHT_CALIBRATION";
-
-        if (preFlightWarningBox() == QMessageBox::Abort)
-            return;
-
-        int confirm = 1;
-        float param1 = 1.0; // Gyro calibration: 0: no, 1: yes
-        float param2 = 0.0; // Magnetometer calibration: 0: no, 1: yes
-        float param3 = 0.0; // Ground pressure: 0: no, 1: yes
-        float param4 = 0.0; // Radio calibration: 0: no, 1: yes
-        float param5 = 0.0; // Accelerometer calibration: 0: no, 1: yes
-        float param6 = 0.0; // | Empty|
-        float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
-        m_uas->executeCommand(command,
-                              confirm, param1, param2, param3,
-                              param4, param5, param6, param7, component);
+        showPreflightCalibrationDialog();
     } break;
 
     case MAV_CMD_MISSION_START: {
@@ -565,7 +553,7 @@ void UASActionsWidget::sendApmPlaneCommand(MAV_CMD command)
         float param5 = 0.0; // | Empty|
         float param6 = 0.0; // | Empty|
         float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -577,7 +565,7 @@ void UASActionsWidget::sendApmPlaneCommand(MAV_CMD command)
         Q_ASSERT(command == MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN);
         QLOG_INFO() << "MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN";
 
-        if (preFlightWarningBox() == QMessageBox::Abort)
+        if (preFlightWarningBox(this) == QMessageBox::Abort)
             return;
 
         int confirm = 1;
@@ -588,7 +576,27 @@ void UASActionsWidget::sendApmPlaneCommand(MAV_CMD command)
         float param5 = 0.0; // | Empty|
         float param6 = 0.0; // | Empty|
         float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
+        m_uas->executeCommand(command,
+                              confirm, param1, param2, param3,
+                              param4, param5, param6, param7, component);
+
+    } break;
+
+    case MAV_CMD_DO_DIGICAM_CONTROL: {
+        // Take a photo
+        Q_ASSERT(command == MAV_CMD_DO_DIGICAM_CONTROL);
+        QLOG_INFO() << "MAV_CMD_DO_DIGICAM_CONTROL";
+
+        int confirm = 1;
+        float param1 = 0.0; // | Session control e.g. show/hide lens
+        float param2 = 0.0; // | Zoom's absolute position
+        float param3 = 0.0; // | Zooming step value to offset zoom from the current position
+        float param4 = 0.0; // | Focus Locking, Unlocking or Re-locking
+        float param5 = 1.0; // | Shooting Command
+        float param6 = 0.0; // | Command Identity
+        float param7 = 0.0; // | Empty|
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -617,7 +625,7 @@ void UASActionsWidget::sendApmCopterCommand(MAV_CMD command)
         float param5 = 0.0; // Latitude
         float param6 = 0.0; // Longitude
         float param7 = 0.0; // Altitude
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -636,7 +644,7 @@ void UASActionsWidget::sendApmCopterCommand(MAV_CMD command)
         float param5 = 0.0; // Latitude
         float param6 = 0.0; // Longitude
         float param7 = 0.0; // Altitude
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -645,24 +653,7 @@ void UASActionsWidget::sendApmCopterCommand(MAV_CMD command)
 
     case MAV_CMD_PREFLIGHT_CALIBRATION: {
         // Trigger calibration. This command will be only accepted if in pre-flight mode.
-        Q_ASSERT(command == MAV_CMD_PREFLIGHT_CALIBRATION);
-        QLOG_INFO() << "MAV_CMD_PREFLIGHT_CALIBRATION";
-
-        if (preFlightWarningBox() == QMessageBox::Abort)
-            return;
-
-        int confirm = 1;
-        float param1 = 1.0; // Gyro calibration: 0: no, 1: yes
-        float param2 = 0.0; // Magnetometer calibration: 0: no, 1: yes
-        float param3 = 0.0; // Ground pressure: 0: no, 1: yes
-        float param4 = 0.0; // Radio calibration: 0: no, 1: yes
-        float param5 = 0.0; // Accelerometer calibration: 0: no, 1: yes
-        float param6 = 0.0; // | Empty|
-        float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
-        m_uas->executeCommand(command,
-                              confirm, param1, param2, param3,
-                              param4, param5, param6, param7, component);
+        showPreflightCalibrationDialog();
     } break;
 
     case MAV_CMD_MISSION_START: {
@@ -681,7 +672,7 @@ void UASActionsWidget::sendApmCopterCommand(MAV_CMD command)
         float param5 = 0.0; // | Empty|
         float param6 = 0.0; // | Empty|
         float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -693,7 +684,7 @@ void UASActionsWidget::sendApmCopterCommand(MAV_CMD command)
         Q_ASSERT(command == MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN);
         QLOG_INFO() << "MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN";
 
-        if (preFlightWarningBox() == QMessageBox::Abort)
+        if (preFlightWarningBox(this) == QMessageBox::Abort)
             return;
 
         int confirm = 1;
@@ -704,7 +695,27 @@ void UASActionsWidget::sendApmCopterCommand(MAV_CMD command)
         float param5 = 0.0; // | Empty|
         float param6 = 0.0; // | Empty|
         float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
+        m_uas->executeCommand(command,
+                              confirm, param1, param2, param3,
+                              param4, param5, param6, param7, component);
+
+    } break;
+
+    case MAV_CMD_DO_DIGICAM_CONTROL: {
+        // Take a photo
+        Q_ASSERT(command == MAV_CMD_DO_DIGICAM_CONTROL);
+        QLOG_INFO() << "MAV_CMD_DO_DIGICAM_CONTROL";
+
+        int confirm = 1;
+        float param1 = 0.0; // | Session control e.g. show/hide lens
+        float param2 = 0.0; // | Zoom's absolute position
+        float param3 = 0.0; // | Zooming step value to offset zoom from the current position
+        float param4 = 0.0; // | Focus Locking, Unlocking or Re-locking
+        float param5 = 1.0; // | Shooting Command
+        float param6 = 0.0; // | Command Identity
+        float param7 = 0.0; // | Empty|
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -734,7 +745,7 @@ void UASActionsWidget::sendApmRoverCommand(MAV_CMD command)
         float param5 = 0.0; // Latitude
         float param6 = 0.0; // Longitude
         float param7 = 0.0; // Altitude
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -743,24 +754,7 @@ void UASActionsWidget::sendApmRoverCommand(MAV_CMD command)
 
     case MAV_CMD_PREFLIGHT_CALIBRATION: {
         // Trigger calibration. This command will be only accepted if in pre-flight mode.
-        Q_ASSERT(command == MAV_CMD_PREFLIGHT_CALIBRATION);
-        QLOG_INFO() << "MAV_CMD_PREFLIGHT_CALIBRATION";
-
-        if (preFlightWarningBox() == QMessageBox::Abort)
-            return;
-
-        int confirm = 1;
-        float param1 = 1.0; // Gyro calibration: 0: no, 1: yes
-        float param2 = 0.0; // Magnetometer calibration: 0: no, 1: yes
-        float param3 = 0.0; // Ground pressure: 0: no, 1: yes
-        float param4 = 0.0; // Radio calibration: 0: no, 1: yes
-        float param5 = 0.0; // Accelerometer calibration: 0: no, 1: yes
-        float param6 = 0.0; // | Empty|
-        float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
-        m_uas->executeCommand(command,
-                              confirm, param1, param2, param3,
-                              param4, param5, param6, param7, component);
+        showPreflightCalibrationDialog();
     } break;
 
     case MAV_CMD_MISSION_START: {
@@ -779,7 +773,7 @@ void UASActionsWidget::sendApmRoverCommand(MAV_CMD command)
         float param5 = 0.0; // | Empty|
         float param6 = 0.0; // | Empty|
         float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -791,7 +785,7 @@ void UASActionsWidget::sendApmRoverCommand(MAV_CMD command)
         Q_ASSERT(command == MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN);
         QLOG_INFO() << "MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN";
 
-        if (preFlightWarningBox() == QMessageBox::Abort)
+        if (preFlightWarningBox(this) == QMessageBox::Abort)
             return;
 
         int confirm = 1;
@@ -802,7 +796,27 @@ void UASActionsWidget::sendApmRoverCommand(MAV_CMD command)
         float param5 = 0.0; // | Empty|
         float param6 = 0.0; // | Empty|
         float param7 = 0.0; // | Empty|
-        int component = MAV_COMP_ID_ALL;
+        int component = MAV_COMP_ID_PRIMARY;
+        m_uas->executeCommand(command,
+                              confirm, param1, param2, param3,
+                              param4, param5, param6, param7, component);
+
+    } break;
+
+    case MAV_CMD_DO_DIGICAM_CONTROL: {
+        // Take a photo
+        Q_ASSERT(command == MAV_CMD_DO_DIGICAM_CONTROL);
+        QLOG_INFO() << "MAV_CMD_DO_DIGICAM_CONTROL";
+
+        int confirm = 1;
+        float param1 = 0.0; // | Session control e.g. show/hide lens
+        float param2 = 0.0; // | Zoom's absolute position
+        float param3 = 0.0; // | Zooming step value to offset zoom from the current position
+        float param4 = 0.0; // | Focus Locking, Unlocking or Re-locking
+        float param5 = 1.0; // | Shooting Command
+        float param6 = 0.0; // | Command Identity
+        float param7 = 0.0; // | Empty|
+        int component = MAV_COMP_ID_PRIMARY;
         m_uas->executeCommand(command,
                               confirm, param1, param2, param3,
                               param4, param5, param6, param7, component);
@@ -876,6 +890,8 @@ void UASActionsWidget::parameterChanged(int uas, int component, int parameterCou
 
 void UASActionsWidget::contextMenuEvent(QContextMenuEvent *event)
 {
+    Q_UNUSED(event)
+
     QLOG_DEBUG() << "contextMenuEvent";
 
     if(m_uas == NULL)
@@ -1025,5 +1041,15 @@ void UASActionsWidget::loadApmSettings()
      }
 }
 
+void UASActionsWidget::showPreflightCalibrationDialog()
+{
+    PreFlightCalibrationDialog *dialog = new PreFlightCalibrationDialog(this);
+    if(dialog->exec() == 1){
+        QLOG_DEBUG() << "Preflight calibration accepted";
+    } else {
+        QLOG_DEBUG() << "Preflight calibration rejected";
+    }
+
+}
 
 

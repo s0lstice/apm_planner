@@ -14,15 +14,17 @@
 //    (c) Author: Bill Bonney <billbonney@communistech.com>
 //
 
-import QtQuick 1.1
+import QtQuick 2.0
 
 Rectangle {
+    id: root
     signal clicked
 
     property string label: "Text Button label"
     property int minWidth: 75
     property int minHeight: 0
     property int margin: 5
+    property bool enabled: true
 
     width: textBox.width
     height: 72
@@ -38,8 +40,8 @@ Rectangle {
 
     // Highlighting and ativation section
     property color buttonColor: "black"
-    property color onHoverbuttonColor: "lightblue"
-    property color onHoverColor: "darkblue"
+    property color onHoverbuttonColor: "darkGrey"
+    property color onHoverColor: "darkGrey"
     property color borderColor: "white"
 
     Rectangle {
@@ -67,13 +69,16 @@ Rectangle {
                 anchors.fill: parent
                 onClicked: buttonClick()
                 hoverEnabled: true
+                enabled: root.enabled
                 onEntered: {
                     parent.border.color = onHoverColor
                     parent.color = onHoverbuttonColor
+                    textButtonLabel.color = "black"
                 }
                 onExited: {
                     parent.border.color = borderColor
                     parent.color = buttonColor
+                    textButtonLabel.color = "white"
                 }
                 onPressed: parent.color = Qt.darker(onHoverbuttonColor, 1.5)
                 onReleased: parent.color = buttonColor

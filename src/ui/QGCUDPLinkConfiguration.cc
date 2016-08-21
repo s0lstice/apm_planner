@@ -2,15 +2,16 @@
 
 #include "QGCUDPLinkConfiguration.h"
 #include "ui_QGCUDPLinkConfiguration.h"
-
-QGCUDPLinkConfiguration::QGCUDPLinkConfiguration(UDPLink* link, QWidget *parent) :
+#include "LinkManager.h"
+QGCUDPLinkConfiguration::QGCUDPLinkConfiguration(int linkid, QWidget *parent) :
     QWidget(parent),
-    link(link),
     ui(new Ui::QGCUDPLinkConfiguration)
 {
+    m_linkId = linkid;
     ui->setupUi(this);
-    ui->portSpinBox->setValue(link->getPort());
-    connect(ui->portSpinBox, SIGNAL(valueChanged(int)), link, SLOT(setPort(int)));
+    ui->portSpinBox->setValue(getUdpLink()->getPort());
+    connect(LinkManager::instance(),SIGNAL(linkChanged(int)),this,SLOT(linkChanged(int)));
+    connect(ui->portSpinBox, SIGNAL(valueChanged(int)), this, SLOT(portValueChanged(int)));
     connect(ui->addIPButton, SIGNAL(clicked()), this, SLOT(addHost()));
 }
 
@@ -30,6 +31,10 @@ void QGCUDPLinkConfiguration::changeEvent(QEvent *e)
         break;
     }
 }
+void QGCUDPLinkConfiguration::portValueChanged(int value)
+{
+    getUdpLink()->setPort(value);
+}
 
 void QGCUDPLinkConfiguration::addHost()
 {
@@ -38,5 +43,22 @@ void QGCUDPLinkConfiguration::addHost()
                        tr("Host (hostname:port):"), QLineEdit::Normal,
                        "localhost:14555", &ok);
     if (ok && !hostName.isEmpty())
-        link->addHost(hostName);
+    {
+        getUdpLink()->addHost(hostName);
+    }
+}
+void QGCUDPLinkConfiguration::linkChanged(int linkid)
+{
+    if (m_linkId != linkid)
+    {
+        return;
+    }
+    disconnect(ui->portSpinBox, SIGNAL(valueChanged(int)), this, SLOT(portValueChanged(int)));
+    ui->portSpinBox->setValue(getUdpLink()->getPort());
+    connect(ui->portSpinBox, SIGNAL(valueChanged(int)), this, SLOT(portValueChanged(int)));
+}
+
+UDPLink* QGCUDPLinkConfiguration::getUdpLink() const
+{
+    return dynamic_cast<UDPLink*>(LinkManager::instance()->getLink(m_linkId));
 }

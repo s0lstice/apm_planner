@@ -26,11 +26,10 @@ This file is part of the QGROUNDCONTROL project
  *   @brief Implementation of class MainWindow
  *   @author Lorenz Meier <mail@qgroundcontrol.org>
  */
-#include "QsLog.h"
+#include "logging.h"
 #include "dockwidgettitlebareventfilter.h"
 #include "QGC.h"
 #include "MAVLinkSimulationLink.h"
-#include "SerialLink.h"
 #include "UDPLink.h"
 #include "MAVLinkProtocol.h"
 #include "CommConfigurationWindow.h"
@@ -52,11 +51,15 @@ This file is part of the QGROUNDCONTROL project
 #include "QGCTabbedInfoView.h"
 #include "UASRawStatusView.h"
 #include "PrimaryFlightDisplay.h"
+#include "PrimaryFlightDisplayQML.h"
+#include "VibrationMonitor.h"
+#include "EKFMonitor.h"
 #include "ApmToolBar.h"
 #include "SerialSettingsDialog.h"
 #include "TerminalConsole.h"
 #include "AP2DataPlot2D.h"
-
+#include "MissionElevationDisplay.h"
+#include "LinkManagerFactory.h"
 
 #ifdef QGC_OSG_ENABLED
 #include "Q3DWidgetFactory.h"
@@ -80,7 +83,47 @@ This file is part of the QGROUNDCONTROL project
 #include <QGCHilLink.h>
 #include <QGCHilConfiguration.h>
 #include <QGCHilFlightGearConfiguration.h>
-#include <QDeclarativeView>
+
+#define PFD_QML
+
+
+LogWindowSingleton &LogWindowSingleton::instance()
+{
+   static LogWindowSingleton instance;
+   return instance;
+}
+
+void LogWindowSingleton::write(const QString &message)
+{
+   if (!m_debugPtr.isNull())
+   {
+      if (!m_outPutBuffer.empty())
+      {
+         foreach (QString string, m_outPutBuffer)
+         {
+            m_debugPtr->write(string);
+         }
+         m_outPutBuffer.clear();
+         m_startupBuffering = false;
+      }
+      m_debugPtr->write(message);
+   }
+   else if (m_startupBuffering)
+   {
+      m_outPutBuffer.append(message);
+   }
+}
+
+void LogWindowSingleton::setDebugOutput(DebugOutput::Ptr outputPtr)
+{
+   m_debugPtr = outputPtr;
+}
+
+void LogWindowSingleton::removeDebugOutput()
+{
+   m_debugPtr.clear();
+}
+
 
 MainWindow* MainWindow::instance(QSplashScreen* screen)
 {
@@ -119,6 +162,11 @@ bool MainWindow::lowPowerModeEnabled()
     return lowPowerMode;
 }
 
+bool MainWindow::autoProxyModeEnabled()
+{
+    return autoProxyMode;
+}
+
 /**
 * Create new mainwindow. The constructor instantiates all parts of the user
 * interface. It does NOT show the mainwindow. To display it, call the show()
@@ -131,7 +179,9 @@ MainWindow::MainWindow(QWidget *parent):
     aboutToCloseFlag(false),
     changingViewsFlag(false),
     centerStackActionGroup(new QActionGroup(this)),
-    styleFileName(QCoreApplication::applicationDirPath() + "/style-outdoor.css")
+    styleFileName(QCoreApplication::applicationDirPath() + "/style-outdoor.css"),
+    m_heartbeatEnabled(true),
+    m_terminalDialog(NULL)
 {
     QLOG_DEBUG() << "Creating MainWindow";
     this->setAttribute(Qt::WA_DeleteOnClose);
@@ -209,32 +259,35 @@ MainWindow::MainWindow(QWidget *parent):
 
     // Populate link menu
     emit initStatusChanged("Populating link menu");
-    QList<LinkInterface*> links = LinkManager::instance()->getLinks();
-    foreach(LinkInterface* link, links)
+
+    QList<int> links = LinkManager::instance()->getLinks();
+    for (int i=0;i<links.size();i++)
     {
-        this->addLink(link);
+        addLink(links.at(i));
     }
 
-    connect(LinkManager::instance(), SIGNAL(newLink(LinkInterface*)), this, SLOT(addLink(LinkInterface*)), Qt::QueuedConnection);
+    connect(LinkManager::instance(), SIGNAL(newLink(int)), this, SLOT(addLink(int)), Qt::QueuedConnection);
+    connect(LinkManager::instance(),SIGNAL(linkError(int,QString)),this,SLOT(linkError(int,QString)));
 
-
+    connect(ui.actionTerminalConsole, SIGNAL(triggered()), this, SLOT(showTerminalConsole()));
 
 #ifndef QGC_TOOLBAR_ENABLED
     // Add the APM 'toolbar'
 
-    m_apmToolBar = new APMToolBar(this);
+    m_apmToolBar = new APMToolBar();
     m_apmToolBar->setFlightViewAction(ui.actionFlightView);
     m_apmToolBar->setFlightPlanViewAction(ui.actionMissionView);
     m_apmToolBar->setInitialSetupViewAction(ui.actionHardwareConfig);
     m_apmToolBar->setConfigTuningViewAction(ui.actionSoftwareConfig);
     m_apmToolBar->setPlotViewAction(ui.actionEngineersView);
     m_apmToolBar->setSimulationViewAction(ui.actionSimulation_View);
-    m_apmToolBar->setTerminalViewAction(ui.actionTerminalView);
+    m_apmToolBar->setDonateViewAction(ui.actionDonate);
 
     connect(ui.actionAdvanced_Mode, SIGNAL(triggered(bool)), m_apmToolBar, SLOT(checkAdvancedMode(bool)));
 
     QDockWidget *widget = new QDockWidget(tr("APM Tool Bar"),this);
-    widget->setWidget(m_apmToolBar);
+    QWidget *toolbarcontainer = QWidget::createWindowContainer(m_apmToolBar);
+    widget->setWidget(toolbarcontainer);
     widget->setMinimumHeight(72);
     widget->setMaximumHeight(72);
     widget->setMinimumWidth(1024);
@@ -263,18 +316,11 @@ MainWindow::MainWindow(QWidget *parent):
     connect(this, SIGNAL(x11EventOccured(XEvent*)), mouse, SLOT(handleX11Event(XEvent*)));
 #endif //MOUSE_ENABLED_LINUX
 
-    // Connect link
-    if (autoReconnect)
-    {
-        SerialLink* link = new SerialLink();
-        // Add to registry
-        LinkManager::instance()->add(link);
-        LinkManager::instance()->addProtocol(link, mavlink);
-        link->connect();
-    }
-
     // Set low power mode
     enableLowPowerMode(lowPowerMode);
+
+    // Set Automatic use of system Proxies
+    enableAutoProxyMode(autoProxyMode);
 
     // Initialize window state
     windowStateVal = windowState();
@@ -354,20 +400,28 @@ MainWindow::MainWindow(QWidget *parent):
 #endif
 
     // Trigger Auto Update Check
+    m_autoUpdateCheck.suppressNoUpdateSignal();
     QTimer::singleShot(5000, &m_autoUpdateCheck, SLOT(autoUpdateCheck()));
     connect(&m_autoUpdateCheck, SIGNAL(updateAvailable(QString,QString,QString,QString)),
             this, SLOT(showAutoUpdateDownloadDialog(QString,QString,QString,QString)));
+    connect(&m_autoUpdateCheck, SIGNAL(noUpdateAvailable()),
+            this, SLOT(showNoUpdateAvailDialog()));
+
+    settings.endGroup();
 
 }
 
 MainWindow::~MainWindow()
 {
-    if (mavlink)
-    {
-        delete mavlink;
-        mavlink = NULL;
-    }
+    closeTerminalConsole();
 
+    if (joystickWidget)
+    {
+        QLOG_DEBUG() << "Delete JoystickWidget";
+
+        delete joystickWidget;
+        joystickWidget = NULL;
+    }
     if (joystick)
     {
         joystick->shutdown();
@@ -403,25 +457,15 @@ MainWindow::~MainWindow()
         }
     }
     // Delete all UAS objects
-
-
-    if (debugConsole)
-    {
-        delete debugConsole;
-    }
-    if (debugOutput)
-    {
-        QsLogging::Logger::instance().delDestination(debugOutput);
-        //delete debugOutput;
-        //debugOutput->hide();
-        //debugOutput->deleteLater();
-    }
     for (int i=0;i<commsWidgetList.size();i++)
     {
         commsWidgetList[i]->deleteLater();
     }
 
+    // Force the singleton to release the debug widget
+    LogWindowSingleton::instance().removeDebugOutput();
 }
+
 void MainWindow::disableTLogReplayBar()
 {
     statusBar()->hide();
@@ -547,13 +591,15 @@ APMToolBar& MainWindow::toolBar()
 void MainWindow::buildCommonWidgets()
 {
     //TODO:  move protocol outside UI
-    mavlink     = new MAVLinkProtocol();
-    connect(mavlink, SIGNAL(protocolStatusMessage(QString,QString)), this, SLOT(showCriticalMessage(QString,QString)), Qt::QueuedConnection);
+    //mavlink     = new MAVLinkProtocol();
+   // connect(mavlink, SIGNAL(protocolStatusMessage(QString,QString)), this, SLOT(showCriticalMessage(QString,QString)), Qt::QueuedConnection);
+    connect(LinkManager::instance(),SIGNAL(protocolStatusMessage(QString,QString)),this,SLOT(showCriticalMessage(QString,QString)));
     // Add generic MAVLink decoder
-    mavlinkDecoder = new MAVLinkDecoder(mavlink, this);
+    //mavlinkDecoder = new MAVLinkDecoder(mavlink, this);
 
     // Log player
-    logPlayer = new QGCMAVLinkLogPlayer(mavlink, customStatusBar);
+    logPlayer = new QGCMAVLinkLogPlayer(customStatusBar);
+    //logPlayer->setMavlinkDecoder(mavlinkDecoder);
     connect(logPlayer,SIGNAL(logFinished()),statusBar(),SLOT(hide()));
     customStatusBar->setLogPlayer(logPlayer);
 
@@ -602,7 +648,7 @@ void MainWindow::buildCommonWidgets()
         engineeringView->setObjectName("VIEW_ENGINEER");
         //engineeringView->setCentralWidget(new QGCDataPlot2D(this));
         plot = new AP2DataPlot2D(this);
-        plot->addSource(mavlinkDecoder);
+        connect(logPlayer,SIGNAL(logLoaded()),plot,SLOT(clearGraph()));
         engineeringView->setCentralWidget(plot);
 
         addToCentralStackedWidget(engineeringView, VIEW_ENGINEER, tr("Logfile Plot"));
@@ -610,10 +656,10 @@ void MainWindow::buildCommonWidgets()
 
     if (!mavlinkView)
     {
-        mavlinkView = new SubMainWindow(this);
-        mavlinkView->setObjectName("VIEW_MAVLINK");
-        mavlinkView->setCentralWidget(new XMLCommProtocolWidget(this));
-        addToCentralStackedWidget(mavlinkView, VIEW_MAVLINK, tr("Mavlink Generator"));
+        //mavlinkView = new SubMainWindow(this);
+        //mavlinkView->setObjectName("VIEW_MAVLINK");
+        //mavlinkView->setCentralWidget(new XMLCommProtocolWidget(this));
+        //addToCentralStackedWidget(mavlinkView, VIEW_MAVLINK, tr("Mavlink Generator"));
     }
 
     if (!simView)
@@ -624,20 +670,10 @@ void MainWindow::buildCommonWidgets()
         addToCentralStackedWidget(simView, VIEW_SIMULATION, tr("Simulation View"));
     }
 
-    if (!terminalView)
-    {
-        terminalView = new SubMainWindow(this);
-        terminalView->setObjectName("VIEW_TERMINAL");
-        TerminalConsole *terminalConsole = new TerminalConsole(this);
-        terminalView->setCentralWidget(terminalConsole);
-        addToCentralStackedWidget(terminalView, VIEW_TERMINAL, tr("Terminal View"));
-        connect(plot, SIGNAL(toKMLClicked()), terminalConsole, SLOT(logToKmlClicked()));
-    }
-
     if (!debugOutput)
     {
-        debugOutput = new DebugOutput();
-        QsLogging::Logger::instance().addDestination(QsLogging::DestinationPtr(debugOutput));
+       debugOutput = DebugOutput::Ptr(new DebugOutput);
+       LogWindowSingleton::instance().setDebugOutput(debugOutput);
     }
 
     // Dock widgets
@@ -648,6 +684,14 @@ void MainWindow::buildCommonWidgets()
     createDockWidget(simView,new UASControlWidget(this),tr("Control"),"UNMANNED_SYSTEM_CONTROL_DOCKWIDGET",VIEW_SIMULATION,Qt::LeftDockWidgetArea);
     createDockWidget(plannerView,new UASListWidget(this),tr("Unmanned Systems"),"UNMANNED_SYSTEM_LIST_DOCKWIDGET",VIEW_MISSION,Qt::LeftDockWidgetArea);
     createDockWidget(plannerView,new QGCWaypointListMulti(this),tr("Mission Plan"),"WAYPOINT_LIST_DOCKWIDGET",VIEW_MISSION,Qt::BottomDockWidgetArea);
+
+    {   // Widget that shows the elevation changes over a mission.
+        QAction* tempAction = ui.menuTools->addAction(tr("Mission Elevation"));
+        tempAction->setCheckable(true);
+        connect(tempAction,SIGNAL(triggered(bool)),this, SLOT(showTool(bool)));
+        menuToDockNameMap[tempAction] = "MISSION_ELEVATION_DOCKWIDGET";
+    }
+
     createDockWidget(simView,new QGCWaypointListMulti(this),tr("Mission Plan"),"WAYPOINT_LIST_DOCKWIDGET",VIEW_SIMULATION,Qt::BottomDockWidgetArea);
     createDockWidget(simView,new ParameterInterface(this),tr("Parameters"),"PARAMETER_INTERFACE_DOCKWIDGET",VIEW_SIMULATION,Qt::RightDockWidgetArea);
 
@@ -658,22 +702,8 @@ void MainWindow::buildCommonWidgets()
         tempAction->setCheckable(true);
         connect(tempAction,SIGNAL(triggered(bool)),this, SLOT(showTool(bool)));
     }*/
-    {
-        if (!debugConsole)
-        {
-            debugConsole = new DebugConsole();
-            debugConsole->setWindowTitle("Communications Console");
-            debugConsole->hide();
-            QAction* tempAction = ui.menuTools->addAction(tr("Communication Console"));
-            //menuToDockNameMap[tempAction] = "COMMUNICATION_DEBUG_CONSOLE_DOCKWIDGET";
-            tempAction->setCheckable(true);
-            connect(tempAction,SIGNAL(triggered(bool)),debugConsole,SLOT(setShown(bool)));
-
-        }
-    }
     //Horizontal situation disabled until such a point that we can ensure it's completly operational
     //createDockWidget(simView,new HSIDisplay(this),tr("Horizontal Situation"),"HORIZONTAL_SITUATION_INDICATOR_DOCKWIDGET",VIEW_SIMULATION,Qt::BottomDockWidgetArea);
-
 
     {
         QAction* tempAction = ui.menuTools->addAction(tr("Flight Display"));
@@ -687,6 +717,9 @@ void MainWindow::buildCommonWidgets()
         tempAction->setCheckable(true);
         connect(tempAction,SIGNAL(triggered(bool)),this, SLOT(showTool(bool)));
         menuToDockNameMap[tempAction] = "MAVLINK_INSPECTOR_DOCKWIDGET";
+        /*QGCMAVLinkInspector *widget = new QGCMAVLinkInspector(mavlink,this);
+        logPlayer->setMavlinkInspector(widget);
+        createDockWidget(simView,widget,tr("MAVLink Inspector"),"MAVLINK_INSPECTOR_DOCKWIDGET",VIEW_SIMULATION,Qt::RightDockWidgetArea);*/
     }
 
     /*{ //Actuator status disabled until such a point that we can ensure it's completly operational
@@ -705,10 +738,45 @@ void MainWindow::buildCommonWidgets()
     //HUD disabled until such a point that we can ensure it's completly operational
     //createDockWidget(engineeringView,new HUD(320,240,this),tr("Video Downlink"),"HEAD_UP_DISPLAY_DOCKWIDGET",VIEW_ENGINEER,Qt::RightDockWidgetArea,this->width()/1.5);
 
+#ifndef PFD_QML
     createDockWidget(simView,new PrimaryFlightDisplay(320,240,this),tr("Primary Flight Display"),
                      "PRIMARY_FLIGHT_DISPLAY_DOCKWIDGET",VIEW_SIMULATION,Qt::RightDockWidgetArea);
     createDockWidget(pilotView,new PrimaryFlightDisplay(320,240,this),tr("Primary Flight Display"),
                      "PRIMARY_FLIGHT_DISPLAY_DOCKWIDGET",VIEW_FLIGHT,Qt::LeftDockWidgetArea);
+
+    { //This is required since we don't show the new PFD in full yet
+        QAction* tempAction = ui.menuTools->addAction(tr("Primary Flight Display (2)"));
+        tempAction->setCheckable(true);
+        connect(tempAction,SIGNAL(triggered(bool)),this, SLOT(showTool(bool)));
+        menuToDockNameMap[tempAction] = "PRIMARY_FLIGHT_DISPLAY_QML_DOCKWIDGET";
+    }
+#else
+    createDockWidget(simView,new PrimaryFlightDisplayQML(this),tr("Primary Flight Display"),
+                     "PRIMARY_FLIGHT_DISPLAY_QML_DOCKWIDGET",VIEW_SIMULATION,Qt::RightDockWidgetArea);
+    createDockWidget(pilotView,new PrimaryFlightDisplayQML(this),tr("Primary Flight Display"),
+                     "PRIMARY_FLIGHT_DISPLAY_QML_DOCKWIDGET",VIEW_FLIGHT,Qt::LeftDockWidgetArea);
+
+    { //This is required since we don't show the old PFD in any view
+        QAction* tempAction = ui.menuTools->addAction(tr("Primary Flight Display (old)"));
+        tempAction->setCheckable(true);
+        connect(tempAction,SIGNAL(triggered(bool)),this, SLOT(showTool(bool)));
+        menuToDockNameMap[tempAction] = "PRIMARY_FLIGHT_DISPLAY_DOCKWIDGET";
+    }
+#endif
+
+    { // Adds the Vibration Monitor Tool
+        QAction* tempAction = ui.menuTools->addAction(tr("Vibration Monitor"));
+        tempAction->setCheckable(true);
+        connect(tempAction,SIGNAL(triggered(bool)),this, SLOT(showTool(bool)));
+        menuToDockNameMap[tempAction] = "VIBRATION_MONITOR_DOCKWIDGET";
+    }
+
+    { // Adds the EKF Monitor Tool
+        QAction* tempAction = ui.menuTools->addAction(tr("EKF Monitor"));
+        tempAction->setCheckable(true);
+        connect(tempAction,SIGNAL(triggered(bool)),this, SLOT(showTool(bool)));
+        menuToDockNameMap[tempAction] = "EKF_MONITOR_DOCKWIDGET";
+    }
 
     QGCTabbedInfoView *infoview = new QGCTabbedInfoView(this);
     infoview->addSource(mavlinkDecoder);
@@ -716,13 +784,12 @@ void MainWindow::buildCommonWidgets()
 
     //connect(ui.actionLoad_tlog,SIGNAL(triggered()),this,SLOT(loadTlogMenuClicked()));
 
-
     // Custom widgets, added last to all menus and layouts
     buildCustomWidget();
 
 
 
-#ifdef QGC_OSG_ENABLED
+#ifdef QGC_OSG_ENABLE
     if (q3DWidget)
     {
         q3DWidget = Q3DWidgetFactory::get("PIXHAWK", this);
@@ -850,9 +917,24 @@ void MainWindow::loadDockWidget(QString name)
     {
         createDockWidget(centerStack->currentWidget(),new QGCWaypointListMulti(this),tr("Mission Plan"),"WAYPOINT_LIST_DOCKWIDGET",currentView,Qt::BottomDockWidgetArea);
     }
+    else if (name == "MISSION_ELEVATION_DOCKWIDGET")
+    {
+        createDockWidget(centerStack->currentWidget(),new MissionElevationDisplay(this),tr("Mission Elevation"),"MISSION_ELEVATION_DOCKWIDGET",currentView,Qt::TopDockWidgetArea);
+    }
+    else if (name == "VIBRATION_MONITOR_DOCKWIDGET")
+    {
+        createDockWidget(centerStack->currentWidget(),new VibrationMonitor(this),tr("Vibration Monitor"),"VIBRATION_MONITOR_DOCKWIDGET",currentView,Qt::RightDockWidgetArea);
+    }
+    else if (name == "EKF_MONITOR_DOCKWIDGET")
+    {
+        createDockWidget(centerStack->currentWidget(),new EKFMonitor(this),tr("EKF Monitor"),"EKF_MONITOR_DOCKWIDGET",currentView,Qt::RightDockWidgetArea);
+    }
     else if (name == "MAVLINK_INSPECTOR_DOCKWIDGET")
     {
-        createDockWidget(centerStack->currentWidget(),new QGCMAVLinkInspector(mavlink,this),tr("MAVLink Inspector"),"MAVLINK_INSPECTOR_DOCKWIDGET",currentView,Qt::RightDockWidgetArea);
+        QGCMAVLinkInspector *widget = new QGCMAVLinkInspector(0,this);
+        logPlayer->setMavlinkInspector(widget);
+        createDockWidget(centerStack->currentWidget(),widget,tr("MAVLink Inspector"),"MAVLINK_INSPECTOR_DOCKWIDGET",currentView,Qt::RightDockWidgetArea);
+        //logPlayer*/
     }
     else if (name == "PARAMETER_INTERFACE_DOCKWIDGET")
     {
@@ -861,12 +943,6 @@ void MainWindow::loadDockWidget(QString name)
     else if (name == "UAS_STATUS_DETAILS_DOCKWIDGET")
     {
         createDockWidget(centerStack->currentWidget(),new UASInfoWidget(this),tr("Status Details"),"UAS_STATUS_DETAILS_DOCKWIDGET",currentView,Qt::RightDockWidgetArea);
-    }
-    else if (name == "COMMUNICATION_DEBUG_CONSOLE_DOCKWIDGET")
-    {
-        //This is now a permanently detached window.
-        //centralWidgetToDockWidgetsMap[currentView][name] = console;
-        //createDockWidget(centerStack->currentWidget(),new DebugConsole(this),tr("Communication Console"),"COMMUNICATION_DEBUG_CONSOLE_DOCKWIDGET",currentView,Qt::BottomDockWidgetArea);
     }
     else if (name == "HORIZONTAL_SITUATION_INDICATOR_DOCKWIDGET")
     {
@@ -901,6 +977,10 @@ void MainWindow::loadDockWidget(QString name)
     {
         // createDockWidget(centerStack->currentWidget(),new HUD(320,240,this),tr("Head Up Display"),"PRIMARY_FLIGHT_DISPLAY_DOCKWIDGET",currentView,Qt::RightDockWidgetArea);
         createDockWidget(centerStack->currentWidget(),new PrimaryFlightDisplay(320,240,this),tr("Primary Flight Display"),"HEAD_UP_DISPLAY_DOCKWIDGET",currentView,Qt::RightDockWidgetArea);
+    }
+    else if (name == "PRIMARY_FLIGHT_DISPLAY_QML_DOCKWIDGET")
+    {
+        createDockWidget(centerStack->currentWidget(),new PrimaryFlightDisplayQML(this),tr("Primary Flight Display QML"),"HEAD_UP_DISPLAY_DOCKWIDGET",currentView,Qt::RightDockWidgetArea);
     }
     else if (name == "UAS_INFO_QUICKVIEW_DOCKWIDGET")
     {
@@ -978,7 +1058,7 @@ void MainWindow::addToCentralStackedWidget(QWidget* widget, VIEW_SECTIONS viewSe
 void MainWindow::showCentralWidget()
 {
     QAction* act = qobject_cast<QAction *>(sender());
-    QWidget* widget = qVariantValue<QWidget *>(act->data());
+    QWidget* widget = act->data().value<QWidget*>();
     centerStack->setCurrentWidget(widget);
 }
 
@@ -1009,7 +1089,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     if (isVisible()) storeViewState();
     aboutToCloseFlag = true;
     storeSettings();
-    mavlink->storeSettings();
+    //mavlink->storeSettings();
     UASManager::instance()->storeSettings();
     QMainWindow::closeEvent(event);
 }
@@ -1019,11 +1099,13 @@ void MainWindow::closeEvent(QCloseEvent *event)
  */
 void MainWindow::connectCommonWidgets()
 {
-    if (infoDockWidget && infoDockWidget->widget())
+    /*if (infoDockWidget && infoDockWidget->widget())
     {
         connect(mavlink, SIGNAL(receiveLossChanged(int, float)),
                 infoDockWidget->widget(), SLOT(updateSendLoss(int, float)));
-    }
+    }*/
+
+
 }
 
 void MainWindow::createCustomWidget()
@@ -1202,24 +1284,29 @@ void MainWindow::loadCustomWidgetsFromDefaults(const QString& systemType, const 
 
 void MainWindow::loadSettings()
 {
-    settings.sync();
+    QSettings settings;
     settings.beginGroup("QGC_MAINWINDOW");
     autoReconnect = settings.value("AUTO_RECONNECT",false).toBool();
     currentStyle = (QGC_MAINWINDOW_STYLE)settings.value("CURRENT_STYLE", QGC_MAINWINDOW_STYLE_OUTDOOR).toInt();
     currentView= static_cast<VIEW_SECTIONS>(settings.value("CURRENT_VIEW", VIEW_FLIGHT).toInt());
     lowPowerMode = settings.value("LOW_POWER_MODE", false).toBool();
+    autoProxyMode = settings.value("AUTO_PROXY_MODE", false).toBool();
     dockWidgetTitleBarEnabled = settings.value("DOCK_WIDGET_TITLEBARS", true).toBool();
     isAdvancedMode = settings.value("ADVANCED_MODE", false).toBool();
+    enableHeartbeat(settings.value("HEARTBEATS_ENABLED",true).toBool());
     settings.endGroup();
 }
 
 void MainWindow::storeSettings()
 {
+    QSettings settings;
     settings.beginGroup("QGC_MAINWINDOW");
     settings.setValue("AUTO_RECONNECT", autoReconnect);
     settings.setValue("CURRENT_STYLE", currentStyle);
     settings.setValue("LOW_POWER_MODE", lowPowerMode);
+    settings.setValue("AUTO_PROXY_MODE", autoProxyMode);
     settings.setValue("ADVANCED_MODE", isAdvancedMode);
+    settings.setValue("HEARTBEATS_ENABLED",m_heartbeatEnabled);
     settings.endGroup();
 
     if (!aboutToCloseFlag && isVisible())
@@ -1295,7 +1382,7 @@ void MainWindow::saveScreen()
 
     if (!screenFileName.isEmpty())
     {
-        window.save(screenFileName, format.toAscii());
+        window.save(screenFileName, format.toLatin1());
     }
 }
 void MainWindow::enableDockWidgetTitleBars(bool enabled)
@@ -1332,6 +1419,41 @@ void MainWindow::enableDockWidgetTitleBars(bool enabled)
 void MainWindow::enableAutoReconnect(bool enabled)
 {
     autoReconnect = enabled;
+}
+
+void MainWindow::enableAutoProxyMode(bool enabled)
+{
+    if (enabled)
+    {
+        QLOG_INFO() << "NETWORK_PROXY:" << "Attempting to enable System Network Proxies";
+        QNetworkProxyFactory::setUseSystemConfiguration(true);
+
+        // Check for proxy used for well known external URL
+        QNetworkProxyQuery npq(QUrl("http://www.google.com"));
+        QList<QNetworkProxy> listOfProxies = QNetworkProxyFactory::systemProxyForQuery(npq);
+
+        if (listOfProxies.size() &&
+                QNetworkProxy::NoProxy != listOfProxies[0].type())
+        {
+            QLOG_INFO() << "NETWORK_PROXY:" << "System Proxies in use for external urls";
+            autoProxyMode = enabled;
+        }
+        else
+        {
+            QLOG_ERROR() << "NETWORK_PROXY:" << "No System Proxies found in environment";
+            QNetworkProxyFactory::setUseSystemConfiguration(false);
+        }
+    }
+    else
+    {
+        QLOG_INFO() << "NETWORK_PROXY:" << "Disabling System Network Proxies";
+        QNetworkProxyFactory::setUseSystemConfiguration(false);
+
+        autoProxyMode = enabled;
+    }
+
+    // Ensure the checkbox is in-sync with the current value
+    emit autoProxyChanged(autoProxyMode);
 }
 
 void MainWindow::loadNativeStyle()
@@ -1381,9 +1503,26 @@ void MainWindow::loadStyle(QGC_MAINWINDOW_STYLE style)
 void MainWindow::selectStylesheet()
 {
     // Let user select style sheet
-    styleFileName = QFileDialog::getOpenFileName(this, tr("Specify stylesheet"), styleFileName, tr("CSS Stylesheet (*.css);;"));
+    QFileDialog *dialog = new QFileDialog(this,tr("Specify stylesheet"), styleFileName, tr("CSS Stylesheet (*.css);;"));
+    dialog->setFileMode(QFileDialog::ExistingFile);
+    connect(dialog,SIGNAL(accepted()),this,SLOT(selectStylesheetDialogAccepted()));
+    dialog->show();
+}
+void MainWindow::selectStylesheetDialogAccepted()
+{
+    QFileDialog *dialog = qobject_cast<QFileDialog*>(sender());
+    if (!dialog)
+    {
+        return;
+    }
+    if (dialog->selectedFiles().size() == 0)
+    {
+        //No file selected/cancel clicked
+        return;
+    }
+    QString tmpfilename = dialog->selectedFiles().at(0);
 
-    if (!styleFileName.endsWith(".css"))
+    if (!tmpfilename.endsWith(".css"))
     {
         QMessageBox msgBox;
         msgBox.setIcon(QMessageBox::Information);
@@ -1394,6 +1533,7 @@ void MainWindow::selectStylesheet()
         msgBox.exec();
         return;
     }
+    styleFileName = tmpfilename;
 
     // Load style sheet
     reloadStylesheet();
@@ -1559,7 +1699,15 @@ void MainWindow::connectCommonActions()
     connect(ui.actionCheck_For_Updates, SIGNAL(triggered()), &m_autoUpdateCheck, SLOT(forcedAutoUpdateCheck()));
 
     // Connect actions from ui
-    connect(ui.actionAdd_Link, SIGNAL(triggered()), this, SLOT(addLink()));
+    //connect(ui.actionAdd_Link, SIGNAL(triggered()), this, SLOT(addLink()));
+    ui.actionSerial->setData(LinkInterface::SERIAL_LINK);
+    ui.actionTCP->setData(LinkInterface::TCP_LINK);
+    ui.actionUDP->setData(LinkInterface::UDP_LINK);
+    ui.actionUDPClient->setData(LinkInterface::UDP_CLIENT_LINK);
+    connect(ui.actionSerial,SIGNAL(triggered()),this,SLOT(addLink()));
+    connect(ui.actionTCP,SIGNAL(triggered()),this,SLOT(addLink()));
+    connect(ui.actionUDP,SIGNAL(triggered()),this,SLOT(addLink()));
+    connect(ui.actionUDPClient,SIGNAL(triggered()),this,SLOT(addLink()));
     connect(ui.actionAdvanced_Mode,SIGNAL(triggered(bool)),this,SLOT(setAdvancedMode(bool)));
 
     // Connect internal actions
@@ -1609,8 +1757,6 @@ void MainWindow::connectCommonActions()
     // configuration widget is not instantiated
     // unless it is actually used
     // so no ressources spend on this.
-    //Joystick is disabled until we can ensure it's operational.
-    ui.actionJoystickSettings->setVisible(false);
 
     // Configuration
     // Joystick
@@ -1631,7 +1777,7 @@ void MainWindow::connectCommonActions()
         ui.menuNetwork->menuAction()->setVisible(false);
     }
 
-    connect(ui.actionDebug_Console,SIGNAL(triggered()),debugOutput,SLOT(show()));
+    connect(ui.actionDebug_Console,SIGNAL(triggered()),debugOutput.data(),SLOT(show()));
     connect(ui.actionSimulate, SIGNAL(triggered(bool)), this, SLOT(simulateLink(bool)));
 
     //Disable simulation view until we ensure it's operational.
@@ -1700,46 +1846,21 @@ void MainWindow::showSettings()
     settings->show();
 }
 
-LinkInterface* MainWindow::addLink()
-{
-    SerialLink* link = new SerialLink();
-    // TODO This should be only done in the dialog itself
-
-    LinkManager::instance()->add(link);
-    LinkManager::instance()->addProtocol(link, mavlink);
-
-    // Go fishing for this link's configuration window
-    QList<QAction*> actions = ui.menuNetwork->actions();
-
-    const int32_t& linkIndex(LinkManager::instance()->getLinks().indexOf(link));
-    const int32_t& linkID(LinkManager::instance()->getLinks()[linkIndex]->getId());
-
-    foreach (QAction* act, actions)
-    {
-        if (act->data().toInt() == linkID)
-        { // LinkManager::instance()->getLinks().indexOf(link)
-            act->trigger();
-            break;
-        }
-    }
-
-    return link;
-}
 
 
-bool MainWindow::configLink(LinkInterface *link)
+bool MainWindow::configLink(int linkid)
 {
     // Go searching for this link's configuration window
     QList<QAction*> actions = ui.menuNetwork->actions();
 
     bool found(false);
 
-    const int32_t& linkIndex(LinkManager::instance()->getLinks().indexOf(link));
-    const int32_t& linkID(LinkManager::instance()->getLinks()[linkIndex]->getId());
+    //const int32_t& linkIndex(LinkManager::instance()->getLinks().indexOf(linkid));
+    //const int32_t& linkID(LinkManager::instance()->getLinks()[linkIndex]->getId());
 
     foreach (QAction* action, actions)
     {
-        if (action->data().toInt() == linkID)
+        if (action->data().toInt() == linkid)
         { // LinkManager::instance()->getLinks().indexOf(link)
             found = true;
             action->trigger(); // Show the Link Config Dialog
@@ -1748,43 +1869,74 @@ bool MainWindow::configLink(LinkInterface *link)
 
     return found;
 }
-
-void MainWindow::addLink(LinkInterface *link)
+void MainWindow::addLink()
 {
-    // IMPORTANT! KEEP THESE TWO LINES
-    // THEY MAKE SURE THE LINK IS PROPERLY REGISTERED
-    // BEFORE LINKING THE UI AGAINST IT
-    // Register (does nothing if already registered)
-    LinkManager::instance()->add(link);
-    LinkManager::instance()->addProtocol(link, mavlink);
-
-    // Go fishing for this link's configuration window
-    QList<QAction*> actions = ui.menuNetwork->actions();
-
-    bool found(false);
-
-    const int32_t& linkIndex(LinkManager::instance()->getLinks().indexOf(link));
-    const int32_t& linkID(LinkManager::instance()->getLinks()[linkIndex]->getId());
-
-    foreach (QAction* act, actions)
+    QAction *send = qobject_cast<QAction*>(sender());
+    if (!send)
     {
-        if (act->data().toInt() == linkID)
-        { // LinkManager::instance()->getLinks().indexOf(link)
-            found = true;
+        return;
+    }
+    int newid = 0;
+    if (send->data() == LinkInterface::SERIAL_LINK)
+    {
+        newid = LinkManagerFactory::addSerialConnection();
+    }
+    else if (send->data() == LinkInterface::TCP_LINK)
+    {
+        newid = LinkManagerFactory::addTcpConnection(QHostAddress::LocalHost, "", 5760, false);
+    }
+    else if (send->data() == LinkInterface::UDP_LINK)
+    {
+        newid = LinkManagerFactory::addUdpConnection(QHostAddress::LocalHost,14550);
+    }
+    else if (send->data() == LinkInterface::UDP_CLIENT_LINK)
+    {
+        newid = LinkManagerFactory::addUdpClientConnection(QHostAddress("192.168.4.1"),14550);
+    }
+    addLink(newid);
+    for (int i=0;i<ui.menuNetwork->actions().size();i++)
+    {
+        if (ui.menuNetwork->actions().at(i)->data().toInt() == newid)
+        {
+            //Link already exists!
+            ui.menuNetwork->actions().at(i)->trigger();
+            return;
         }
     }
 
-    if (!found)
-    {
-        CommConfigurationWindow* commWidget = new CommConfigurationWindow(link, mavlink, NULL);
-        commsWidgetList.append(commWidget);
-        connect(commWidget,SIGNAL(destroyed(QObject*)),this,SLOT(commsWidgetDestroyed(QObject*)));
-        QAction* action = commWidget->getAction();
-        ui.menuNetwork->addAction(action);
+    //CommConfigurationWindow *commWidget = new CommConfigurationWindow()
+}
 
-        // Error handling
-        connect(link, SIGNAL(communicationError(QString,QString)), this, SLOT(showCriticalMessage(QString,QString)), Qt::QueuedConnection);
+void MainWindow::addLink(int linkid)
+{
+    for (int i=0;i<ui.menuNetwork->actions().size();i++)
+    {
+        if (ui.menuNetwork->actions().at(i)->data().toInt() == linkid)
+        {
+            //Link already exists!
+            return;
+        }
     }
+    CommConfigurationWindow* commWidget = new CommConfigurationWindow(linkid, 0, this);
+    commsWidgetList.append(commWidget);
+    connect(commWidget,SIGNAL(destroyed(QObject*)),this,SLOT(commsWidgetDestroyed(QObject*)));
+    QAction* action = commWidget->getAction();
+    action->setData(linkid);
+    ui.menuNetwork->addAction(action);
+
+    // Error handling
+    //connect(link, SIGNAL(communicationError(QString,QString)), this, SLOT(showCriticalMessage(QString,QString)), Qt::QueuedConnection);
+}
+
+void MainWindow::linkError(int linkid,QString errorstring)
+{
+    Q_UNUSED(linkid)
+
+    QWidget* parent = QApplication::activeWindow();
+    if (!parent) {
+        parent = this;
+    }
+    QMessageBox::information(parent,"Link Error",errorstring);
 }
 
 void MainWindow::simulateLink(bool simulate) {
@@ -1793,10 +1945,6 @@ void MainWindow::simulateLink(bool simulate) {
     simulationLink->connectLink(simulate);
 }
 
-//void MainWindow::configLink(LinkInterface *link)
-//{
-
-//}
 void MainWindow::commsWidgetDestroyed(QObject *obj)
 {
     if (commsWidgetList.contains(obj))
@@ -1841,16 +1989,8 @@ void MainWindow::UASSpecsChanged(int uas)
 void MainWindow::UASCreated(UASInterface* uas)
 {
 
-    // Check if this is the 2nd system and we need a switch menu
-    if (UASManager::instance()->getUASList().count() > 1)
-        //        ui.menuConnected_Systems->setEnabled(true);
-
-        // Connect the UAS to the full user interface
-
-        //if (uas != NULL)
-        //{
         // The pilot, operator and engineer views were not available on startup, enable them now
-        ui.actionFlightView->setEnabled(true);
+    ui.actionFlightView->setEnabled(true);
     ui.actionMissionView->setEnabled(true);
     ui.actionEngineersView->setEnabled(true);
     // The UAS actions are not enabled without connection to system
@@ -1938,19 +2078,6 @@ void MainWindow::UASCreated(UASInterface* uas)
     // HIL
     showHILConfigurationWidget(uas);
 
-    if (!linechartWidget)
-    {
-        linechartWidget = new Linecharts(this);
-        //linechartWidget->hide();
-
-    }
-
-    linechartWidget->addSource(mavlinkDecoder);
-    /*if (engineeringView->centralWidget() != linechartWidget)
-    {
-        engineeringView->setCentralWidget(linechartWidget);
-        linechartWidget->show();
-    }*/
 
     // Load default custom widgets for this autopilot type
     loadCustomWidgetsFromDefaults(uas->getSystemTypeName(), uas->getAutopilotTypeName());
@@ -2036,15 +2163,6 @@ void MainWindow::UASDeleted(UASInterface* uas)
         //        ui.menuUnmanned_System->setTitle(tr("No System"));
         //        ui.menuUnmanned_System->setEnabled(false);
     }
-
-    //    QAction* act;
-    //    QList<QAction*> actions = ui.menuConnected_Systems->actions();
-
-    //    foreach (act, actions)
-    //    {
-    //        if (act->text().contains(uas->getUASName()))
-    //            ui.menuConnected_Systems->removeAction(act);
-    //    }
 }
 
 /**
@@ -2354,4 +2472,48 @@ void MainWindow::autoUpdateCancelled(QString version)
 
     delete m_dialog;
     m_dialog = NULL;
+}
+
+void MainWindow::showNoUpdateAvailDialog()
+{
+    QMessageBox::information(this,"Update Check", "No new update available!",QMessageBox::Ok);
+}
+void MainWindow::enableHeartbeat(bool enabled)
+{
+    if (m_heartbeatEnabled != enabled)
+    {
+        m_heartbeatEnabled = enabled;
+        for (int i=0;i<UASManager::instance()->getUASList().size();i++)
+        {
+            UASManager::instance()->getUASList().at(i)->setHeartbeatEnabled(enabled);
+        }
+        storeSettings();
+    }
+}
+
+void MainWindow::showTerminalConsole()
+{
+    if(m_terminalDialog == NULL){
+        m_terminalDialog = new QDialog(NULL);
+        TerminalConsole *terminalConsole = new TerminalConsole(this);
+        QVBoxLayout* vLayout = new QVBoxLayout(m_terminalDialog);
+        vLayout->setMargin(0);
+        vLayout->addWidget(terminalConsole);
+        m_terminalDialog->resize(640,325);
+        m_terminalDialog->show();
+        connect(m_terminalDialog, SIGNAL(finished(int)), this, SLOT(closeTerminalConsole()));
+    }
+
+    if (m_terminalDialog){
+        m_terminalDialog->raise();
+    }
+}
+
+void MainWindow::closeTerminalConsole()
+{
+    if (m_terminalDialog){
+        m_terminalDialog->close();
+        m_terminalDialog->deleteLater();
+        m_terminalDialog = NULL;
+    }
 }

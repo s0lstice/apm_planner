@@ -38,12 +38,10 @@ namespace core {
         /// timeout for map connections
         /// </summary>
 
-        Proxy.setType(QNetworkProxy::NoProxy);
-
         /// <summary>
         /// Gets or sets the value of the User-agent HTTP header.
         /// </summary>
-        UserAgent = "Mozilla/5.0 (Windows; U; Windows NT 6.0; en-US; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7";
+        UserAgent = QString("Mozilla/5.0 (Windows NT 6.1; WOW64; rv:%1.0) Gecko/%2%3%4 Firefox/%5.0.%6").arg(QString::number(Random(3,14)), QString::number(Random(QDate().currentDate().year() - 4, QDate().currentDate().year())), QString::number(Random(11,12)), QString::number(Random(10,30)), QString::number(Random(3,14)), QString::number(Random(1,10))).toLatin1();
 
         Timeout = 5 * 1000;
         CorrectGoogleVersions=true;
@@ -53,6 +51,10 @@ namespace core {
     }
     UrlFactory::~UrlFactory()
     {
+    }
+    int UrlFactory::Random(int low, int high)
+    {
+        return low + qrand() % (high - low);
     }
     QString UrlFactory::TileXYToQuadKey(const int &tileX,const int &tileY,const int &levelOfDetail) const
     {
@@ -102,7 +104,6 @@ namespace core {
             connect(&network, SIGNAL(finished(QNetworkReply*)),
                     &q, SLOT(quit()));
             connect(&tT, SIGNAL(timeout()), &q, SLOT(quit()));
-            network.setProxy(Proxy);
 #ifdef DEBUG_URLFACTORY
             qDebug()<<"Correct GoogleVersion";
 #endif //DEBUG_URLFACTORY
@@ -146,7 +147,7 @@ namespace core {
                 qDebug()<<"TryCorrectGoogleVersions, VersionGoogleLabels: "<<VersionGoogleLabels;
 #endif //DEBUG_URLFACTORY
             }
-            reg=QRegExp("\"*http://khm0.google.com/kh/v=(\\d*)",Qt::CaseInsensitive);
+            reg=QRegExp("\"*http://khm\\D?\\d.google.com/kh/v=(\\d*)",Qt::CaseInsensitive);
             if(reg.indexIn(html)!=-1)
             {
                 QStringList gc=reg.capturedTexts();
@@ -405,6 +406,13 @@ namespace core {
                 return QString("http://server.arcgisonline.com/ArcGIS/rest/services/NGS_Topo_US_2D/MapServer/tile/%1/%2/%3").arg(zoom).arg(pos.Y()).arg(pos.X());
             }
             break;
+        case MapType::ArcGIS_WorldTopo:
+            {
+                // http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/4/3/15
+
+                return QString("http://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/%1/%2/%3").arg(zoom).arg(pos.Y()).arg(pos.X());
+            }
+            break;
         case MapType::ArcGIS_MapsLT_OrtoFoto:
             {
                 // http://www.maps.lt/ortofoto/mapslt_ortofoto_vector_512/map/_alllayers/L02/R0000001b/C00000028.jpg
@@ -473,6 +481,12 @@ namespace core {
                 return QString("http://%1").arg(server)+QString("0%2.maps.yandex.ru/tiles?l=map&v=%3&x=%4&y=%5&z=%6").arg(GetServerNum(pos, 4)+1).arg(VersionYandexMap).arg(pos.X()).arg(pos.Y()).arg(zoom);
             }
             break;
+        case MapType::Statkart_Topo2:
+                    {
+
+                        return QString("http://opencache.statkart.no/gatekeeper/gk/gk.open_gmaps?layers=topo2&zoom=%1&x=%2&y=%3").arg(zoom).arg(pos.X()).arg(pos.Y());
+                    }
+                    break;
         default:
             break;
         }
@@ -533,7 +547,6 @@ namespace core {
             QNetworkReply *reply;
             QNetworkRequest qheader;
             QNetworkAccessManager network;
-            network.setProxy(Proxy);
             qheader.setUrl(QUrl(url));
             qheader.setRawHeader("User-Agent",UserAgent);
             reply=network.get(qheader);
@@ -627,7 +640,6 @@ namespace core {
             QNetworkReply *reply;
             QNetworkRequest qheader;
             QNetworkAccessManager network;
-            network.setProxy(Proxy);
             qheader.setUrl(QUrl(url));
             qheader.setRawHeader("User-Agent",UserAgent);
             reply=network.get(qheader);

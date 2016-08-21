@@ -24,7 +24,9 @@ http://www.fsf.org/licensing/licenses
 #include <stddef.h>
 #include <string>
 #include <cstring>
+extern "C" {
 #include <math.h>
+}
 
 #ifdef __BORLANDC__
 #include <list.h>
@@ -942,8 +944,8 @@ public:
 };
 
 const alglib::complex operator/(const alglib::complex& lhs, const alglib::complex& rhs);
-const bool operator==(const alglib::complex& lhs, const alglib::complex& rhs);
-const bool operator!=(const alglib::complex& lhs, const alglib::complex& rhs);
+bool operator==(const alglib::complex& lhs, const alglib::complex& rhs);
+bool operator!=(const alglib::complex& lhs, const alglib::complex& rhs);
 const alglib::complex operator+(const alglib::complex& lhs);
 const alglib::complex operator-(const alglib::complex& lhs);
 const alglib::complex operator+(const alglib::complex& lhs, const alglib::complex& rhs);

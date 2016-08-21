@@ -1,17 +1,20 @@
 #include "dataselectionscreen.h"
 #include <QCheckBox>
 #include <QVBoxLayout>
-
+#include <logging.h>
+#include <GraphTreeWidgetItem.h>
 DataSelectionScreen::DataSelectionScreen(QWidget *parent) : QWidget(parent)
 {
 	ui.setupUi(this);
     connect(ui.treeWidget, SIGNAL(itemChanged(QTreeWidgetItem*,int)), this, SLOT(onItemChanged(QTreeWidgetItem*,int)));
     connect(ui.clearPushButton,SIGNAL(clicked()),this,SLOT(clearSelectionButtonClicked()));
+    ui.treeWidget->setHeaderHidden(true);
 }
 
 DataSelectionScreen::~DataSelectionScreen()
 {
 }
+
 void DataSelectionScreen::clearSelectionButtonClicked()
 {
     QList<QTreeWidgetItem*> items = ui.treeWidget->findItems("",Qt::MatchContains | Qt::MatchRecursive);
@@ -26,14 +29,14 @@ void DataSelectionScreen::clearSelectionButtonClicked()
             }
         }
     }
-
+    m_enabledList.clear();
 }
 
 void DataSelectionScreen::enableItem(QString name)
 {
     QString first = name.split(".")[0];
     QString second = name.split(".")[1];
-    QList<QTreeWidgetItem*> items = ui.treeWidget->findItems(second,Qt::MatchContains | Qt::MatchRecursive);
+    QList<QTreeWidgetItem*> items = ui.treeWidget->findItems(second,Qt::MatchExactly | Qt::MatchRecursive,0);
     if (items.size() == 0)
     {
         return;
@@ -42,12 +45,18 @@ void DataSelectionScreen::enableItem(QString name)
     {
         if (items[i]->parent())
         {
-            if (items[i]->parent()->text(0).contains(first))
+            if (items[i]->parent()->text(0) == first)
             {
-                items[i]->setCheckState(0,Qt::Checked);
-                ui.treeWidget->scrollToItem(items[i]);
-                m_enabledList.append(name);
+                if (items[i]->checkState(0) != Qt::Checked)
+                {
+                    items[i]->setCheckState(0,Qt::Checked);
+                    ui.treeWidget->scrollToItem(items[i]);
+                }
                 return;
+            }
+            else
+            {
+                QLOG_DEBUG() << "Not found:" << items[i]->parent()->text(0);
             }
         }
     }
@@ -58,19 +67,43 @@ void DataSelectionScreen::disableItem(QString name)
 {
     QString first = name.split(".")[0];
     QString second = name.split(".")[1];
-    QList<QTreeWidgetItem*> items = ui.treeWidget->findItems(second,Qt::MatchContains | Qt::MatchRecursive);
+    QList<QTreeWidgetItem*> items = ui.treeWidget->findItems(second,Qt::MatchExactly | Qt::MatchRecursive,0);
     if (items.size() == 0)
     {
         return;
     }
     for (int i=0;i<items.size();i++)
     {
-        if (items[i]->parent()->text(0).contains(first))
+        //If the item has no parent, it's a top level item and we ignore it anyway.
+        if (items[i]->parent())
         {
-            items[0]->setCheckState(0,Qt::Unchecked);
-            m_enabledList.removeOne(name);
-            return;
+            if (items[i]->parent()->text(0) == first)
+            {
+                if (items[i]->checkState(0) != Qt::Unchecked)
+                {
+                    items[i]->setCheckState(0,Qt::Unchecked);
+                    return;
+                }
+            }
         }
+    }
+    QLOG_ERROR() << "No item found in DataSelectionScreen:disableItem:" << name;
+}
+
+QList<QString> DataSelectionScreen::disableAllItems()
+{
+    // Store enabled List for returning
+    QList<QString> tempList(m_enabledList);
+    // Clear all selected items - its like perssing the clear button
+    clearSelectionButtonClicked();
+    return tempList;
+}
+
+void DataSelectionScreen::enableItemList(QList<QString> &itemList)
+{
+    foreach (QString item, itemList)
+    {
+        enableItem(item);
     }
 }
 
@@ -90,7 +123,7 @@ void DataSelectionScreen::addItem(QString name)
         QList<QTreeWidgetItem*> findlist = ui.treeWidget->findItems(groupname,Qt::MatchContains);
         if (findlist.size() > 0)
         {
-            QTreeWidgetItem *child = new QTreeWidgetItem(QStringList() << shortname);
+            GraphTreeWidgetItem *child = new GraphTreeWidgetItem(QStringList() << shortname);
             child->setFlags(child->flags() | Qt::ItemIsUserCheckable);
             child->setCheckState(0,Qt::Unchecked);
             findlist[0]->addChild(child);
@@ -98,18 +131,20 @@ void DataSelectionScreen::addItem(QString name)
         }
         else
         {
-            QTreeWidgetItem *item = new QTreeWidgetItem(QStringList() << groupname);
+            GraphTreeWidgetItem *item = new GraphTreeWidgetItem(QStringList() << groupname);
             ui.treeWidget->addTopLevelItem(item);
-            QTreeWidgetItem *child = new QTreeWidgetItem(QStringList() << shortname);
+            GraphTreeWidgetItem *child = new GraphTreeWidgetItem(QStringList() << shortname);
+
             child->setFlags(child->flags() | Qt::ItemIsUserCheckable);
             child->setCheckState(0,Qt::Unchecked);
             item->addChild(child);
         }
-
     }
+    ui.treeWidget->sortByColumn(0,Qt::AscendingOrder);
 }
 void DataSelectionScreen::onItemChanged(QTreeWidgetItem* item,int column)
 {
+    Q_UNUSED(column)
     if (!item->parent())
     {
         return;

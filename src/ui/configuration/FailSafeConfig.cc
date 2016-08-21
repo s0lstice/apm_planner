@@ -103,12 +103,15 @@ FailSafeConfig::FailSafeConfig(QWidget *parent) : AP2ConfigWidget(parent)
     ui.radio8Out->setMax(2200);
     ui.radio8Out->setOrientation(Qt::Horizontal);
 
-    ui.throttleFailSafeComboBox->addItem("Disable");
-    ui.throttleFailSafeComboBox->addItem("Enabled - Always RTL");
-    ui.throttleFailSafeComboBox->addItem("Enabled - Continue in auto");
-    ui.throttleFailSafeComboBox->addItem("Enabled - always LAND");
+    ui.throttleFailSafeComboBox->addItem("DISABLED");
+    ui.throttleFailSafeComboBox->addItem("RTL");
+    ui.throttleFailSafeComboBox->addItem("Continue in AUTO");
+    ui.throttleFailSafeComboBox->addItem("LAND");
 
-    connect(ui.batteryFailCheckBox,SIGNAL(clicked(bool)),this,SLOT(batteryFailChecked(bool)));
+    ui.batteryFailSafeComboBox->addItem("DISABLED");
+    ui.batteryFailSafeComboBox->addItem("LAND");
+    ui.batteryFailSafeComboBox->addItem("RTL");
+    
     connect(ui.fsLongCheckBox,SIGNAL(clicked(bool)),this,SLOT(fsLongClicked(bool)));
     connect(ui.fsShortCheckBox,SIGNAL(clicked(bool)),this,SLOT(fsShortClicked(bool)));
     connect(ui.gcsCheckBox,SIGNAL(clicked(bool)),this,SLOT(gcsChecked(bool)));
@@ -118,7 +121,8 @@ FailSafeConfig::FailSafeConfig(QWidget *parent) : AP2ConfigWidget(parent)
     connect(ui.batteryVoltSpinBox,SIGNAL(editingFinished()),this,SLOT(batteryVoltChanged()));
     connect(ui.throttleFailSafeComboBox,SIGNAL(currentIndexChanged(int)),this,SLOT(throttleFailSafeChanged(int)));
     connect(ui.batteryCapSpinBox,SIGNAL(editingFinished()),this,SLOT(batteryCapChanged()));
-
+    connect(ui.batteryFailSafeComboBox,SIGNAL(currentIndexChanged(int)),this,SLOT(batteryFailSafeChanged(int)));
+    
     ui.armedLabel->setText("<h1>DISARMED</h1>");
 
 
@@ -263,26 +267,20 @@ void FailSafeConfig::fsShortClicked(bool checked)
     }
 }
 
-void FailSafeConfig::batteryFailChecked(bool checked)
+void FailSafeConfig::batteryFailSafeChanged(int index)
 {
     if (!m_uas)
     {
         showNullMAVErrorMessageBox();
         return;
     }
-    if (checked)
-    {
-        m_uas->setParameter(1,"FS_BATT_ENABLE",1);
-    }
-    else
-    {
-        m_uas->setParameter(1,"FS_BATT_ENABLE",0);
-    }
+    m_uas->setParameter(1,"FS_BATT_ENABLE",index);
 }
 
 FailSafeConfig::~FailSafeConfig()
 {
 }
+
 void FailSafeConfig::activeUASSet(UASInterface *uas)
 {
     if (m_uas)
@@ -305,7 +303,7 @@ void FailSafeConfig::activeUASSet(UASInterface *uas)
 
     if (m_uas->isFixedWing())
     {
-        ui.batteryFailCheckBox->setVisible(false);
+        ui.batteryFailSafeComboBox->setVisible(false);
         ui.throttleFailSafeComboBox->setVisible(false);
         ui.batteryVoltSpinBox->setVisible(false);
         ui.label_6->setVisible(false);
@@ -320,7 +318,7 @@ void FailSafeConfig::activeUASSet(UASInterface *uas)
     }
     else if (m_uas->isMultirotor())
     {
-        ui.batteryFailCheckBox->setVisible(true);
+        ui.batteryFailSafeComboBox->setVisible(true);
         ui.throttleFailSafeComboBox->setVisible(true);
         ui.batteryVoltSpinBox->setVisible(true);
         ui.label_6->setVisible(true);
@@ -336,7 +334,7 @@ void FailSafeConfig::activeUASSet(UASInterface *uas)
     else
     {
         //Show all, just in case
-        ui.batteryFailCheckBox->setVisible(true);
+        ui.batteryFailSafeComboBox->setVisible(true);
         ui.throttleFailSafeComboBox->setVisible(true);
         ui.batteryVoltSpinBox->setVisible(true);
         ui.throttlePwmSpinBox->setVisible(true); //Both
@@ -350,6 +348,9 @@ void FailSafeConfig::activeUASSet(UASInterface *uas)
 }
 void FailSafeConfig::parameterChanged(int uas, int component, QString parameterName, QVariant value)
 {
+    Q_UNUSED(uas)
+    Q_UNUSED(component)
+
     //Arducopter
     if (parameterName == "FS_THR_ENABLE")
     {
@@ -363,14 +364,9 @@ void FailSafeConfig::parameterChanged(int uas, int component, QString parameterN
     }
     else if (parameterName == "FS_BATT_ENABLE")
     {
-        if (value.toInt() == 0)
-        {
-            ui.batteryFailCheckBox->setChecked(false);
-        }
-        else
-        {
-            ui.batteryFailCheckBox->setChecked(true);
-        }
+        disconnect(ui.batteryFailSafeComboBox,SIGNAL(currentIndexChanged(int)),this,SLOT(batteryFailSafeChanged(int)));
+        ui.batteryFailSafeComboBox->setCurrentIndex(value.toInt());
+        connect(ui.batteryFailSafeComboBox,SIGNAL(currentIndexChanged(int)),this,SLOT(batteryFailSafeChanged(int)));
     }
     else if (parameterName == "LOW_VOLT")
     {
@@ -500,6 +496,8 @@ void FailSafeConfig::remoteControlChannelRawChanges(int chan,float value)
 }
 void FailSafeConfig::hilActuatorsChanged(uint64_t time, float act1, float act2, float act3, float act4, float act5, float act6, float act7, float act8)
 {
+    Q_UNUSED(time)
+
     ui.radio1Out->setValue(act1);
     ui.radio2Out->setValue(act2);
     ui.radio3Out->setValue(act3);
@@ -511,6 +509,8 @@ void FailSafeConfig::hilActuatorsChanged(uint64_t time, float act1, float act2, 
 }
 void FailSafeConfig::gpsStatusChanged(UASInterface* uas,int fixtype)
 {
+    Q_UNUSED(uas)
+
     if (fixtype == 0 || fixtype == 1)
     {
         ui.gpsLabel->setText("<h1>GPS: No Fix</h1>");
@@ -526,5 +526,8 @@ void FailSafeConfig::gpsStatusChanged(UASInterface* uas,int fixtype)
 }
 void FailSafeConfig::navModeChanged(int uasid, int mode, const QString& text)
 {
+    Q_UNUSED(uasid)
+    Q_UNUSED(mode)
+
     ui.modeLabel->setText("<h1>" + text + "</h1>");
 }

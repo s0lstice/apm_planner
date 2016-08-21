@@ -1,7 +1,7 @@
 /*===================================================================
 QGroundControl Open Source Ground Control Station
 
-(c) 2009, 2010 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+(c) 2009, 2010, 2014 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
 
 This file is part of the QGROUNDCONTROL project
 
@@ -28,12 +28,13 @@ This file is part of the QGROUNDCONTROL project
  *   @author Benjamin Knecht <mavteam@student.ethz.ch>
  *   @author Petri Tanskanen <mavteam@student.ethz.ch>
  *   @author Alex Trofimov <talex@student.ethz.ch>
+ *   @author Bill Bonney <billbonney@communistech.com>
  */
 
 #ifndef WAYPOINTEDITABLEVIEW_H
 #define WAYPOINTEDITABLEVIEW_H
 
-#include <QtGui/QWidget>
+#include <QtWidgets/QWidget>
 #include "Waypoint.h"
 #include <iostream>
 
@@ -55,9 +56,21 @@ class QGCMissionNavLand;
 class QGCMissionNavTakeoff;
 class QGCMissionNavSweep;
 class QGCMissionDoJump;
+class QGCMissionDoSetServo;
+class QGCMissionDoRepeatServo;
+class QGCMissionDoDigicamControl;
+class QGCMissionDoSetRelay;
+class QGCMissionDoRepeatRelay;
+class QGCMissionDoSetROI;
+class QGCMissionDoSetHome;
+class QGCMissionDoSetCamTriggDistance;
+class QGCMissionDoChangeSpeed;
 class QGCMissionDoStartSearch;
 class QGCMissionDoFinishSearch;
+class QGCMissionDoSetReverse;
 class QGCMissionConditionDelay;
+class QGCMissionConditionYaw;
+class QGCMissionConditionDistance;
 class QGCMissionOther;
 
 class WaypointEditableView : public QWidget
@@ -70,17 +83,18 @@ public:
 
 public:
     void setCurrent(bool state);
-
 public slots:
     void moveUp();
     void moveDown();
+    void moveTop();
+    void moveBottom();
+
     void remove();
     /** @brief Waypoint matching this widget has been deleted */
     void deleted(QObject* waypoint);
     void changedAutoContinue(int);    
     void changedFrame(int state);
     void updateActionView(int action);
-    void initializeActionView(int action);
 
     void changedCurrent(int);
     void updateValues(void);
@@ -101,30 +115,23 @@ protected:
     Waypoint* wp;
     QGC_WAYPOINTEDITABLEVIEW_MODE viewMode;
     // Widgets for every mission element
-    QGCMissionNavWaypoint* MissionNavWaypointWidget;
-    QGCMissionNavLoiterUnlim* MissionNavLoiterUnlimWidget;
-    QGCMissionNavLoiterTurns* MissionNavLoiterTurnsWidget;
-    QGCMissionNavLoiterTime* MissionNavLoiterTimeWidget;
-    QGCMissionNavReturnToLaunch* MissionNavReturnToLaunchWidget;
-    QGCMissionNavLand* MissionNavLandWidget;
-    QGCMissionNavTakeoff* MissionNavTakeoffWidget;
-    QGCMissionNavSweep* MissionNavSweepWidget;
-    QGCMissionDoJump* MissionDoJumpWidget;
-    QGCMissionDoStartSearch* MissionDoStartSearchWidget;
-    QGCMissionDoFinishSearch* MissionDoFinishSearchWidget;
-    QGCMissionConditionDelay* MissionConditionDelayWidget;
-    QGCMissionOther* MissionOtherWidget;
+    QWidget* m_missionWidget;
+    int m_currentAction;
 
 private:
     void disableMouseScrollWheel(const QWidget *parentWidget);
+    QWidget* createActionWidget(int action);
 
+    void blockAllSpinBoxSignals(const bool shallBlock);
 private:
     Ui::WaypointEditableView *m_ui;
 
 signals:
     void moveUpWaypoint(Waypoint*);
     void moveDownWaypoint(Waypoint*);
-    void removeWaypoint(Waypoint*);    
+    void moveTopWaypoint(Waypoint*);
+    void moveBottomWaypoint(Waypoint*);
+    void removeWaypoint(Waypoint*);
     void changeCurrentWaypoint(quint16);
     void setYaw(double);
 
